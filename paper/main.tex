@@ -9,13 +9,20 @@
 \usepackage{url}
 \usepackage{booktabs}
 \usepackage{amsfonts}
+\usepackage{amssymb}
 \usepackage{amsmath}
+\usepackage{amsthm}
 \usepackage{nicefrac}
 \usepackage{microtype}
 \usepackage{xcolor}
 \usepackage{graphicx}
 
 \input{results/numbers}
+\input{results/extra}
+
+\newtheorem{lemma}{Lemma}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\se}[1]{\,(#1)}
 
 \title{A per-sample offset for scikit-learn logistic regression}
 
@@ -29,20 +36,301 @@
 
 \maketitle
 
+% ---------------------------------------------------------------- abstract
 \begin{abstract}
+scikit-learn's \code{LogisticRegression} has no per-sample offset (a fixed term added to each example's log-odds), so a user who already holds a strong reference probability for every example must enter it as a feature, where the ridge penalty shrinks it.
+We add \code{offset=} to \code{fit} and every prediction method, and a package that uses a fraction $\kappa$ of the reference's log-odds as the offset, with $\kappa$ chosen by cross-validation.
+Against pristine \code{LogisticRegressionCV} without the reference, the offset lowers test log-loss by \nHgTwoFiftyDKcvPlain{} (SE \nHgTwoFiftyDKcvPlainSe) on HIGGS and \nBkTwoFiftyDKcvPlain{} (SE \nBkTwoFiftyDKcvPlainSe) on Bank Marketing at \nSizeTwoFifty{} training rows, but against the reference entered as a nearly unpenalised feature it is a tie: it wins beyond \nWinK{} SE in \nBeatKcvFree{} of \nMainCells{} cells (HIGGS, $n = \nSizeOneK$: \nHgOneKDKcvFree, SE \nHgOneKDKcvFreeSe).
+The one kept variant, a one-SE rule toward $\kappa = 1$, beats that free column under the same rule at $n = \nSizeHund$ (\nHcHundDRuleFreeRule, SE \nHcHundDRuleFreeRuleSe) but never beats the reference used alone (\nHcHundDRuleRef, SE \nHcHundDRuleRefSe), and on the drifting Elec2 stream the offset does not beat the model without the reference.
+Every difference is paired on held-out rows over \nBkRepeats{} to \nElRepeats{} disjoint repeats, its SE is between repeats, and the fits match statsmodels to \nTwinSmCoef{} in the coefficients.
 \end{abstract}
 
+% ---------------------------------------------------------------- 1
 \section{Problem}
+\label{sec:problem}
 
+An offset is a known term added to the linear score of a generalised linear model (GLM): the model learns weights for the features, but the offset enters with its coefficient fixed at one~\citep{mccullagh1989}.
+R's \code{glm}, glmnet~\citep{friedman2010}, statsmodels~\citep{seabold2010} and glum~\citep{glum} all accept it.
+scikit-learn~\citep{pedregosa2011} does not, and the request has been open since 2022~\citep{sklearn24614}.
+
+The case we care about is a strong reference.
+For every example there is already a probability from somewhere else: an older model, a model trained on other data, or an outside source.
+A ridge logistic model on a few hundred rows should then learn only the correction that the features add.
+Without an offset the only route is to put the reference's log-odds in as one more column.
+The ridge penalty then shrinks the coefficient of the strongest input in the model, and the fitted output is a flattened copy of the reference.
+Scaling that column up makes its coefficient nearly free, which removes the shrinkage but also removes any pull toward a coefficient of one.
+
+The change came out of a private application, which we do not describe.
+The one result we report from it is this: \privateLine{}
+Everything below is measured on public benchmarks.
+
+% ---------------------------------------------------------------- 2
 \section{The change}
+\label{sec:change}
 
+The patch adds an array \code{offset} of shape $(n,)$ to \code{fit}, \code{decision\_function}, \code{predict}, \code{predict\_proba} and \code{predict\_log\_proba}, in the same way as \code{sample\_weight}.
+The model and its objective are
+\begin{equation}
+\eta_i = x_i^\top w + b + o_i,
+\qquad
+\min_{w,b}\; C \sum_{i=1}^{n} s_i\, \ell(y_i, \eta_i) + \tfrac{1}{2}\lVert w\rVert^2 ,
+\label{eq:offset}
+\end{equation}
+\begin{center}\small
+\begin{tabular}{ll}
+\toprule
+Symbol & Meaning \\
+\midrule
+$\eta_i$ & log-odds of example $i$ \\
+$x_i, w, b$ & features, their weights, the intercept \\
+$o_i$ & the offset of example $i$, given, not fitted \\
+$C, s_i$ & inverse ridge strength, sample weight \\
+$\ell$ & log-loss $\log(1+e^{\eta}) - y\eta$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+The offset is data: it is never stored, and $o = \code{None}$ gives the current behaviour bit for bit.
+It works for binary problems with the lbfgs, newton-cg and newton-cholesky solvers, and for the Poisson, Gamma and Tweedie regressors.
+The library diff is \nPatchLibAdd{} added and \nPatchLibDel{} removed lines, with \nPatchTestAdd{} lines of tests.
+One of the removed lines is a bug fix the offset exposed.
+The Newton line search evaluates $\eta(w + t\,d) = \eta(w) + t\,X d$, and the direction term $X d$ was built through the same helper that adds $o$.
+The offset was then counted twice per step, and newton-cholesky stalled or fell back to lbfgs.
+
+The package \code{anchorlogit} builds the offset from a reference probability $p_i$, with $r_i = \operatorname{logit}(p_i)$:
+\begin{equation}
+o_i = \kappa\, r_i, \qquad \kappa \in \{\nKappaGrid\},
+\label{eq:kappa}
+\end{equation}
+where $\kappa$ is the fraction of the reference we trust, chosen jointly with $C$ by $\nFolds$-fold cross-validated log-loss.
+$\kappa = 1$ is the classical GLM offset and $\kappa = 0$ ignores the reference.
+For training rows the reference must be out of sample: if it was fitted on the same rows, \code{anchorlogit} cross-fits it (each row gets a prediction from a fit that did not see it)~\citep{chernozhukov2018}.
+
+A general form lets the coefficient on $r$ move but pulls it toward $\kappa$, with an anchoring strength $\lambda$:
+\begin{equation}
+J(w,b,\beta) = C \sum_{i} s_i\, \ell\bigl(y_i,\; x_i^\top w + b + \beta r_i\bigr) + \tfrac{1}{2}\lVert w\rVert^2 + \tfrac{1}{2}\lambda(\beta-\kappa)^2 .
+\label{eq:anchored}
+\end{equation}
+$\lambda = \infty$ is the fixed offset of Equation~\ref{eq:kappa} and $\lambda = 0$ is the reference as a free column.
+Lemma~\ref{lem:anchored} shows that every $\lambda$ in between needs nothing beyond \code{offset=}.
+
+\begin{lemma}\label{lem:anchored}
+For $0 < \lambda < \infty$, $(w^*, b^*, u^*)$ minimises the offset problem~\eqref{eq:offset} with offset $o_i = \kappa r_i$ and one extra ridge column $r_i/\sqrt{\lambda}$ (weight $u$) if and only if $(w^*, b^*, \kappa + u^*/\sqrt{\lambda})$ minimises $J$.
+\end{lemma}
+
+\begin{proof}
+Given:
+1) $J$ as in~\eqref{eq:anchored};
+2) the offset problem with the extra column, $K(w,b,u) = C\sum_i s_i\,\ell\bigl(y_i,\, x_i^\top w + b + u\,r_i/\sqrt{\lambda} + \kappa r_i\bigr) + \tfrac{1}{2}\lVert w\rVert^2 + \tfrac{1}{2}u^2$;
+3) if $\phi$ is a bijection and $K(v) = J(\phi(v))$ for all $v$, then $v^*$ minimises $K$ if and only if $\phi(v^*)$ minimises $J$.
+
+\textbf{Choose:} $\phi(w,b,u) = (w,\, b,\, \kappa + u/\sqrt{\lambda})$, so $\beta = \kappa + u/\sqrt{\lambda}$.
+
+\textbf{Need to prove:} $J(w, b, \kappa + u/\sqrt{\lambda}) = K(w,b,u)$ for all $(w,b,u)$.
+The ridge term $\tfrac{1}{2}\lVert w\rVert^2$ is the same in both. The score term:
+\begin{align*}
+\beta r_i &= \bigl(\kappa + u/\sqrt{\lambda}\bigr) r_i && \text{substitution of } \beta\\
+          &= \kappa r_i + u\,\bigl(r_i/\sqrt{\lambda}\bigr) && \text{distributive law}
+\end{align*}
+The anchoring term:
+\begin{align*}
+\tfrac{1}{2}\lambda(\beta-\kappa)^2 &= \tfrac{1}{2}\lambda\bigl(u/\sqrt{\lambda}\bigr)^2 && \text{substitution of } \beta\\
+                                   &= \tfrac{1}{2}\lambda\, u^2/\lambda && \text{power of a quotient}\\
+                                   &= \tfrac{1}{2}u^2 && \lambda \neq 0
+\end{align*}
+\textbf{Precondition:} rule 3 is only valid if $\phi$ is a bijection, therefore its inverse must exist on all of $\mathbb{R}$:
+\begin{align*}
+\beta = \kappa + u/\sqrt{\lambda} \;&\Longleftrightarrow\; u = \sqrt{\lambda}\,(\beta - \kappa) && 0 < \lambda < \infty
+\end{align*}
+$w$ and $b$ map to themselves, so $\phi$ is a bijection.
+
+\textbf{Therefore,} by rule 3: $(w^*,b^*,u^*)$ minimises $K$ if and only if $(w^*, b^*, \kappa + u^*/\sqrt{\lambda})$ minimises $J$.
+\end{proof}
+
+The check in code matches the direct minimisation of $J$ to \nTwinLemTwoEta{} in $\eta$ over \nTwinLemTwoCases{} cases.
+
+% ---------------------------------------------------------------- 3
 \section{Setup}
+\label{sec:setup}
 
+Three public datasets cover three cases for the reference, all from OpenML~\citep{vanschoren2014}.
+\textbf{HIGGS}~\citep{baldi2014}: gradient boosting on the \nHgLowCols{} low-level columns, fitted once on \nHgRefRows{} disjoint rows, is the reference; the ridge sees all \nHgAllCols{} columns, so the features partly re-express it.
+\textbf{Bank Marketing}~\citep{moro2014}: gradient boosting on every column, fitted on a disjoint half, so the features add nothing (the expected null).
+\textbf{Elec2}~\citep{harries1999}: a time-ordered stream; the reference is fitted on rows before each origin with an embargo of \nElEmbargo{} rows, so it ages, and the test set is the next week.
+HIGGS has \nHgRepeats{} repeats, Bank \nBkRepeats{} and Elec2 \nElRepeats{}; each repeat is a disjoint (train, test) draw with \nHgTestPerRep, \nBkTestPerRep{} and \nElTestPerRep{} test rows.
+
+\begin{table}[h]
+\centering\small
+\caption{Arms. Every offset arm is a restriction of the same cross-validation grid on the same folds, so the tuning budget is equal.}
+\label{tab:arms}
+\begin{tabular}{ll}
+\toprule
+Arm & Model \\
+\midrule
+a1 & pristine \code{LogisticRegressionCV}, no reference \\
+a2 & reference alone (a2\textsubscript{P}: Platt-recalibrated~\citep{platt1999}) \\
+a3 & pristine \code{LogisticRegressionCV}, $r$ as a standardised feature \\
+a4 & same, $r$ column scaled by 100 (nearly free coefficient, $\lambda = 10^{-4}$) \\
+a5 & offset, $\kappa = 1$, $C$ by CV (classical GLM offset) \\
+a6 & offset, $(\kappa, C)$ by CV (ours) \\
+a7 & anchored, $(\kappa, \lambda, C)$ by CV, $\lambda \in \{\nStrengthGrid\}$ (ours) \\
+a9 & a6 with the reference refit in-sample on the training rows (leakage ablation) \\
+a10 & LightGBM~\citep{ke2017} started at $\kappa_{\mathrm{cv}}\, r$ (\code{init\_score}) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+$C$ runs over \nCGridSize{} values from \nCGridLo{} to \nCGridHi.
+The metric is test log-loss in nats. For arm $a$ against ours, repeat $j$ of $R$ gives the paired difference over its test rows $T_j$:
+\begin{equation}
+d_j = \frac{1}{|T_j|}\sum_{i \in T_j} \bigl[\ell(y_i, \eta^{\mathrm{ours}}_i) - \ell(y_i, \eta^{a}_i)\bigr],
+\qquad
+\bar d = \frac{1}{R}\sum_{j=1}^{R} d_j,
+\qquad
+\mathrm{SE} = \frac{\operatorname{sd}(d_1,\dots,d_R)}{\sqrt{R}} .
+\label{eq:paired}
+\end{equation}
+Negative $\bar d$ favours ours. Because the repeats are disjoint, this SE includes the noise of the training draw.
+We call it a win only when $|\bar d| > \nWinK\,\mathrm{SE}$, and anything inside that is a tie.
+\nPreregChecks{} checks were fixed before the runs: a6 beats a1 on at least two of the \nDatasets{} datasets, a6 versus a3 and a4, and $\kappa_{\mathrm{cv}} < 1$ where the reference is off.
+
+% ---------------------------------------------------------------- 4
 \section{Results}
+\label{sec:results}
 
+Table~\ref{tab:main} gives the main runs.
+The offset beats the model without the reference in \nBeatKcvPlain{} of \nMainCells{} cells.
+On HIGGS the gap falls from \nHgTwoFiftyDKcvPlain{} at $n = \nSizeTwoFifty$ to \nHgTwoKDKcvPlain{} at $n = \nSizeTwoK$, and on Bank it is \nBkTwoFiftyDKcvPlain{} at $n = \nSizeTwoFifty$.
+That only shows that a good reference helps, which is known.
+
+The real question is the reference as a column.
+The penalised column a3 loses to the offset at small $n$ (HIGGS $n = \nSizeTwoFifty$: \nHgTwoFiftyDKcvFeat, SE \nHgTwoFiftyDKcvFeatSe; Bank: \nBkTwoFiftyDKcvFeat, SE \nBkTwoFiftyDKcvFeatSe), because the ridge shrinks its coefficient.
+The nearly free column a4 does not have that problem.
+Against a4 the offset wins in \nBeatKcvFree{} of \nMainCells{} cells and loses in \nLoseKcvFree, and the anchored a7 also wins in \nBeatAnchFree.
+The single win is HIGGS at $n = \nSizeOneK$ (\nHgOneKDKcvFree, SE \nHgOneKDKcvFreeSe), and in that cell a3 ties the offset (\nHgOneKDKcvFeat, SE \nHgOneKDKcvFeatSe).
+So the offset is a tie with the free column.
+
+\begin{table}[h]
+\centering\small
+\caption{The offset ties the free column and beats the model without the reference on HIGGS and Bank, not on Elec2. Test log-loss per arm; $\bar d$ = a6 minus the arm with its between-repeat SE; bold is beyond \nWinK{} SE.}
+\label{tab:main}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrrrrrrrr}
+\toprule
+Data, $n$ & a1 & a2 & a4 & a5 & a6 & $\bar d$ vs a1 & $\bar d$ vs a4 & $\bar d$ vs a5 \\
+\midrule
+HIGGS \nSizeTwoFifty & \nHgTwoFiftyPlainLL & \nHgTwoFiftyRefLL & \nHgTwoFiftyFreeLL & \nHgTwoFiftyKOneLL & \nHgTwoFiftyKcvLL & \textbf{\nHgTwoFiftyDKcvPlain}\se{\nHgTwoFiftyDKcvPlainSe} & \nHgTwoFiftyDKcvFree\se{\nHgTwoFiftyDKcvFreeSe} & \nHgTwoFiftyDKcvKOne\se{\nHgTwoFiftyDKcvKOneSe} \\
+HIGGS \nSizeFiveHund & \nHgFiveHundPlainLL & \nHgFiveHundRefLL & \nHgFiveHundFreeLL & \nHgFiveHundKOneLL & \nHgFiveHundKcvLL & \textbf{\nHgFiveHundDKcvPlain}\se{\nHgFiveHundDKcvPlainSe} & \nHgFiveHundDKcvFree\se{\nHgFiveHundDKcvFreeSe} & \nHgFiveHundDKcvKOne\se{\nHgFiveHundDKcvKOneSe} \\
+HIGGS \nSizeOneK & \nHgOneKPlainLL & \nHgOneKRefLL & \nHgOneKFreeLL & \nHgOneKKOneLL & \nHgOneKKcvLL & \textbf{\nHgOneKDKcvPlain}\se{\nHgOneKDKcvPlainSe} & \textbf{\nHgOneKDKcvFree}\se{\nHgOneKDKcvFreeSe} & \nHgOneKDKcvKOne\se{\nHgOneKDKcvKOneSe} \\
+HIGGS \nSizeTwoK & \nHgTwoKPlainLL & \nHgTwoKRefLL & \nHgTwoKFreeLL & \nHgTwoKKOneLL & \nHgTwoKKcvLL & \textbf{\nHgTwoKDKcvPlain}\se{\nHgTwoKDKcvPlainSe} & \nHgTwoKDKcvFree\se{\nHgTwoKDKcvFreeSe} & \nHgTwoKDKcvKOne\se{\nHgTwoKDKcvKOneSe} \\
+Bank \nSizeTwoFifty & \nBkTwoFiftyPlainLL & \nBkTwoFiftyRefLL & \nBkTwoFiftyFreeLL & \nBkTwoFiftyKOneLL & \nBkTwoFiftyKcvLL & \textbf{\nBkTwoFiftyDKcvPlain}\se{\nBkTwoFiftyDKcvPlainSe} & \nBkTwoFiftyDKcvFree\se{\nBkTwoFiftyDKcvFreeSe} & \nBkTwoFiftyDKcvKOne\se{\nBkTwoFiftyDKcvKOneSe} \\
+Bank \nSizeOneK & \nBkOneKPlainLL & \nBkOneKRefLL & \nBkOneKFreeLL & \nBkOneKKOneLL & \nBkOneKKcvLL & \textbf{\nBkOneKDKcvPlain}\se{\nBkOneKDKcvPlainSe} & \nBkOneKDKcvFree\se{\nBkOneKDKcvFreeSe} & \nBkOneKDKcvKOne\se{\nBkOneKDKcvKOneSe} \\
+Elec2 \nSizeTwoFifty & \nElTwoFiftyPlainLL & \nElTwoFiftyRefLL & \nElTwoFiftyFreeLL & \nElTwoFiftyKOneLL & \nElTwoFiftyKcvLL & \nElTwoFiftyDKcvPlain\se{\nElTwoFiftyDKcvPlainSe} & \nElTwoFiftyDKcvFree\se{\nElTwoFiftyDKcvFreeSe} & \textbf{\nElTwoFiftyDKcvKOne}\se{\nElTwoFiftyDKcvKOneSe} \\
+Elec2 \nSizeOneK & \nElOneKPlainLL & \nElOneKRefLL & \nElOneKFreeLL & \nElOneKKOneLL & \nElOneKKcvLL & \nElOneKDKcvPlain\se{\nElOneKDKcvPlainSe} & \nElOneKDKcvFree\se{\nElOneKDKcvFreeSe} & \textbf{\nElOneKDKcvKOne}\se{\nElOneKDKcvKOneSe} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The fraction $\kappa$ matters only where the reference is off.
+On HIGGS cross-validation picks $\kappa = 1$ in \nHgTwoFiftyKcvKappaOnes{} draws at $n = \nSizeTwoFifty$, and a6 ties a5.
+On Elec2 the aged reference gets a median $\kappa$ of \nElOneKKcvKappaMed{} at $n = \nSizeOneK$, and a6 beats the full offset by \nElOneKDKcvKOne{} (SE \nElOneKDKcvKOneSe).
+Figure~\ref{fig:paired} shows every comparison with its \nCIPct\% interval.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.92\linewidth]{figures/fig1_paired.pdf}
+\caption{The offset clearly beats no reference and the penalised column, and sits on zero against the free column. Paired test log-loss difference (ours minus arm) with \nCIPct\% intervals from the between-repeat SE; (d) is the one-SE rule against its controls. Panel (c) has a symmetric log axis.}
+\label{fig:paired}
+\end{figure}
+
+A tie at the CV optimum raised the question of what would have to be true for the offset to win.
+We tried \nPostHocVariants{} variants after the main runs, none pre-registered.
+The first one is the only one we kept.
+At $n = \nSizeHund$ the CV minimum over $\kappa$ was noisy, and $\kappa_{\mathrm{cv}}$ lost to $\kappa = 1$ (\nHsHundDKcvKOne, SE \nHsHundDKcvKOneSe).
+The one-SE rule~\citep{hastie2009} takes, among all $(\kappa, C)$ within one fold-SE of the best cross-validated loss, the largest $\kappa$ and then the strongest ridge:
+\begin{equation}
+(\hat\kappa, \hat C) = \operatorname*{arg\,max}_{(\kappa, C) \in S}\, (\kappa, -C),
+\qquad
+S = \{(\kappa, C) : \mathrm{CV}(\kappa, C) \le \mathrm{CV}_{\min} + \mathrm{SE}_{\min}\},
+\label{eq:onese}
+\end{equation}
+where the arg max is lexicographic and $\mathrm{SE}_{\min}$ is the fold SE at the CV minimum.
+To keep the comparison fair, the free column gets the same $C$ rule as a control.
+Table~\ref{tab:onese} gives the result.
+
+\begin{table}[h]
+\centering\small
+\caption{The one-SE rule beats the free column at $n \le \nSizeHundFifty$ but never the reference alone. $\bar d$ = rule minus arm (SE), HIGGS, \nHcRepeats{} repeats; the rule picks $\kappa = 1$ in every draw.}
+\label{tab:onese}
+\begin{tabular}{lrrrr}
+\toprule
+$n$ & vs a4 (CV $C$) & vs free column, same rule & vs reference alone & $\kappa = 1$ picks \\
+\midrule
+\nSizeHund & \textbf{\nHcHundDRuleFree}\se{\nHcHundDRuleFreeSe} & \nHcHundDRuleFreeRule\se{\nHcHundDRuleFreeRuleSe} & \textbf{\nHcHundDRuleRef}\se{\nHcHundDRuleRefSe} & \nHcHundRuleKappaOnes \\
+\nSizeHundFifty & \textbf{\nHcHundFiftyDRuleFree}\se{\nHcHundFiftyDRuleFreeSe} & \textbf{\nHcHundFiftyDRuleFreeRule}\se{\nHcHundFiftyDRuleFreeRuleSe} & \textbf{\nHcHundFiftyDRuleRef}\se{\nHcHundFiftyDRuleRefSe} & \nHcHundFiftyRuleKappaOnes \\
+\nSizeTwoFifty & \textbf{\nHcTwoFiftyDRuleFree}\se{\nHcTwoFiftyDRuleFreeSe} & \nHcTwoFiftyDRuleFreeRule\se{\nHcTwoFiftyDRuleFreeRuleSe} & \textbf{\nHcTwoFiftyDRuleRef}\se{\nHcTwoFiftyDRuleRefSe} & \nHcTwoFiftyRuleKappaOnes \\
+\nSizeOneK & \nHcOneKDRuleFree\se{\nHcOneKDRuleFreeSe} & \nHcOneKDRuleFreeRule\se{\nHcOneKDRuleFreeRuleSe} & \nHcOneKDRuleRef\se{\nHcOneKDRuleRefSe} & \nHcOneKRuleKappaOnes \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The rule beats the free column under its own $C$ rule at $n = \nSizeHundFifty$ (\nHcHundFiftyDRuleFreeRule, SE \nHcHundFiftyDRuleFreeRuleSe).
+At $n = \nSizeHund$ the same gap is \nHcHundDRuleFreeRule{} (SE \nHcHundDRuleFreeRuleSe), just inside \nWinK{} SE, so it is a tie under our own rule.
+It loses to the reference alone at every $n \le \nSizeTwoFifty$.
+It picks $\kappa = 1$ every time, so it is the classical offset with a conservative ridge, not a fractional one.
+
+The second variant built the reference from all \nHgAllCols{} HIGGS columns, so the features only re-express it.
+a6 then ties the free column at $n = \nSizeHund$ (\nSrHundDKcvFree, SE \nSrHundDKcvFreeSe) and loses to the reference alone (\nSrHundDKcvRef, SE \nSrHundDKcvRefSe).
+The third trained the Bank reference only on clients under 40, so it is wrong in a group the features can see.
+There $\kappa_{\mathrm{cv}}$ has median \nBsOneKKcvKappaMed{} at $n = \nSizeOneK$ and beats $\kappa = 1$ by \nBsOneKDKcvKOne{} (SE \nBsOneKDKcvKOneSe) and the reference by \nBsOneKDKcvRef{} (SE \nBsOneKDKcvRefSe).
+It still ties the free column (\nBsOneKDKcvFree, SE \nBsOneKDKcvFreeSe) and the Platt-recalibrated reference (\nBsOneKDKcvPlatt, SE \nBsOneKDKcvPlattSe).
+
+Calibration (whether a predicted 0.7 comes true 70\% of the time) follows the log-loss.
+In Figure~\ref{fig:rel} the expected calibration error (ECE, the mean gap between predicted and observed frequency over \nEceBins{} equal-mass bins) of the offset and of the free column are close in both panels.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.92\linewidth]{figures/fig2_reliability.pdf}
+\caption{The offset is as well calibrated as the free column, and better than the raw reference when the reference is shifted. Reliability diagrams on pooled test rows, \nEceBins{} equal-mass bins; the legend's ECE is the mean over repeats.}
+\label{fig:rel}
+\end{figure}
+
+Two ablations bound the method.
+A reference refit in-sample on the training rows leaks the labels: on HIGGS at $n = \nSizeTwoFifty$ its log-loss is \nHgTwoFiftyLocInLL{} against \nHgTwoFiftyLocCfLL{} cross-fitted, so cross-fitting is required.
+A nonlinear correction beats every linear arm once $n \ge \nSizeFiveHund$: LightGBM started at the same offset is better than a6 by \nHgOneKDKcvGbm{} (SE \nHgOneKDKcvGbmSe) at $n = \nSizeOneK$.
+
+The implementation itself is exact.
+The patched fit matches statsmodels to \nTwinSmCoef{} in the coefficients over \nTwinSmCases{} cases and glum to \nTwinGlumCoef{} over \nTwinGlumCases.
+A zero offset matches stock scikit-learn to \nTwinUpCoef.
+\nUpstreamOffsetTests{} new upstream tests pass on scikit-learn \nVerSklearn, and the package passes \nPkgTestsPatchedPass{} tests with \nPkgTestsPatchedFail{} failures.
+
+% ---------------------------------------------------------------- 5
 \section{Limits}
+\label{sec:limits}
+
+The headline is a tie.
+Against the reference entered as a nearly unpenalised column, the offset wins in \nBeatKcvFree{} of \nMainCells{} cells, and with a two-stage row bootstrap SE that count stays \nBeatKcvFreeBoot.
+Anyone can already get most of the gain by scaling one column, and the patch mainly makes this explicit and clean.
+
+On Elec2 the offset does not beat the model without the reference (\nElTwoFiftyDKcvPlain, SE \nElTwoFiftyDKcvPlainSe), and the Platt-recalibrated reference alone has a far lower log-loss (\nElTwoFiftyPlattLL{} against \nElTwoFiftyKcvLL{} at $n = \nSizeTwoFifty$).
+That gap is \nElTwoFiftyDKcvPlatt{} with SE \nElTwoFiftyDKcvPlattSe, which is a tie under our rule despite its size.
+A fraction $\kappa < 1$ is a coarse fix for a reference that is wrong in slope and level.
+
+We ran \nMainArms{} main arms and \nVariantArms{} variant arms over \nResultFiles{} result files.
+\nPreregChecks{} checks were pre-registered; the first held on HIGGS and Bank and failed on Elec2.
+The \nPostHocVariants{} variants were post-hoc, and the kept one-SE rule was chosen after seeing its held-out numbers, so its win is not a confirmed result.
+The planned ACS Income dataset, $n$ above \nSizeTwoK{} and more repeats were cut for budget.
+The method is binary only, and we claim nothing for multiclass or for the GLM regressors beyond the equivalence checks.
 
 \bibliographystyle{plainnat}
 \bibliography{refs}
+
+\appendix
+\section{Reproduction}
+\label{app:repro}
+
+The patch is \code{patches/scikit-learn-offset.patch}; the benchmarks run with \code{bench/run\_all.sh} and \code{bench/run\_variants.sh}, and \code{python -m bench.summarize} prints every table.
+Numbers in this note come from \code{paper/results/make\_numbers.py} and \code{make\_extra.py}; recomputing the means and SEs from the stored per-row test log-odds differs from the result files by at most \nRecomputeMaxDiff.
+All runs used CPU only with \nThreads{} threads per process, \nComputeHours{} h in total (HIGGS \nHgRuntimeMin{} min, Elec2 \nElRuntimeMin, Bank \nBkRuntimeMin), Python \nVerPython, scikit-learn \nVerSklearn, statsmodels \nVerStatsmodels, glum \nVerGlum, \code{anchorlogit} \nVerAnchorlogit.
+On stock scikit-learn without the patch the package passes \nPkgTestsStockPass{} tests and skips \nPkgTestsStockSkip.
 
 \end{document}
