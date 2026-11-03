@@ -1,6 +1,7 @@
 """Electricity / Elec2 (OpenML 151): a drifting, time-ordered stream.
 
-For each of 12 disjoint origins ``o``: the reference is gradient boosting fitted
+For each of 12 disjoint origins ``o`` (from row 19,000, after the
+Victoria columns start to vary): the reference is gradient boosting fitted
 on every row before ``o - 1000 - 48`` (one day of embargo before the longest
 training window), so it ages; the residual model trains on the ``n`` rows just
 before ``o`` and is tested on the next 336 rows (one week). Features: day of
@@ -26,7 +27,7 @@ from bench.datasets import fetch
 N_TRAIN = (250, 1000)
 N_TEST = 336
 EMBARGO = 48
-FIRST, STEP = 15000, 1500
+FIRST, STEP = 19000, 1500  # vic* and transfer are constant before row 17,424
 
 
 def load():
