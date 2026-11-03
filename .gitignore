@@ -11,3 +11,12 @@ dist/
 htmlcov/
 *.so
 .ipynb_checkpoints/
+
+# paper build output (only paper/anchorlogit.pdf is shipped)
+*.aux
+*.log
+*.bbl
+*.blg
+*.out
+.harvest/
+paper/main.pdf
