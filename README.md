@@ -7,10 +7,10 @@
   <a href="paper/anchorlogit.pdf"><img alt="Paper PDF" src="https://img.shields.io/badge/Paper-PDF-b31b1b?logo=adobeacrobatreader&logoColor=white"></a>
 </p>
 
-scikit-learn's `LogisticRegression` has no per-sample `offset=`; this package adds it, matching statsmodels and glum to
-**1.2e-8**, and fitting only the correction on top of a reference probability cut test log-loss by **0.053 nats
-(SE 0.004) on HIGGS and 0.088 (SE 0.005) on Bank Marketing at 250 training rows**, while against the reference
-entered as a nearly free column it is a **tie with zero losses** in 8 cells, and the tables below say so.
+Fitting only the correction on top of a probability you already have cut test log-loss by **0.053 nats (SE 0.004)
+on HIGGS and 0.088 (SE 0.005) on Bank Marketing at 250 training rows**, never lost to the reference entered as a
+nearly free column in 8 benchmark cells, and gives scikit-learn's `LogisticRegression` the per-sample `offset=` it
+lacks, exact to **1.2e-8** against statsmodels and glum.
 
 ```bash
 pip install git+https://github.com/tr4m0ryp/anchorlogit
@@ -52,7 +52,7 @@ the reference move but pulls it towards `kappa` instead of towards zero.
 
 One rule matters more than any setting: the reference for a training row must not have seen that row's label. If you
 fit the reference on the same rows, the package **cross-fits** it: each row's reference comes from a fit on the other
-folds. Skipping that leaks the labels and made log-loss worse by 0.08 to 0.51 nats in our runs.
+folds. Skipping that leaks the labels and made log-loss worse by 0.06 to 0.53 nats in our runs.
 
 What we found: starting from the reference beats ignoring it by a lot on small samples, which is expected. Against the
 honest rival, the reference entered as a feature whose weight is left almost free, it ties. The offset never lost
@@ -209,7 +209,8 @@ symmetric log axis.*
 - **The headline is a tie** with the reference as a nearly free column (1 win in 8 cells, 1 under a two-stage
   bootstrap SE). Scaling one column up gets most of the gain.
 - **No win over the no-reference model on Elec2** (+0.079, SE 0.047 at n = 250). A Platt-recalibrated reference does
-  far better there (0.635 against 0.218 + 1), so `kappa < 1` is a coarse fix for a reference wrong in slope and level.
+  far better there (0.635 against our 1.218 at n = 250, a tie only by the large SE), so `kappa < 1` is a coarse fix for a
+  reference wrong in slope and level.
 - **The one-SE rule is post-hoc** and held on fresh draws at one of two sizes, by about 2 SE: weak evidence.
 - **Binary only.** The scikit-learn patch also adds `offset=` to the Poisson, Gamma and Tweedie regressors; we claim
   nothing for them beyond the patch's tests.
@@ -225,7 +226,7 @@ inside the repository.
 
 ```bash
 git clone https://github.com/tr4m0ryp/anchorlogit && cd anchorlogit
-pip install -e ".[dev]" lightgbm pandas matplotlib openml
+pip install -e ".[dev]" lightgbm pandas matplotlib
 pytest                                         # 295 tests with the patch, stock skips the patch-only ones
 bash patches/check_patch.sh python             # apply the scikit-learn patch to a copy and run its tests
 bash bench/run_all.sh                          # HIGGS, Elec2, Bank
