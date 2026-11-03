@@ -1,0 +1,912 @@
+From: Moussa Ouallaf <tramoryp@proton.me>
+Subject: [PATCH] ENH add `offset` to LogisticRegression and the GLM regressors (#24614)
+
+Adds a fixed per-sample offset to the raw prediction,
+
+    raw_prediction = X @ coef + intercept + offset,
+
+passed as an array of shape (n_samples,) to `fit` and to every prediction
+method, like `sample_weight` (option 3 in scikit-learn issue #24614, the API
+statsmodels, glmnet, R and glum use). The offset is data: it is never stored,
+and `offset=None` is the current behaviour bit for bit.
+
+Use cases: an exposure term in count models (`offset=np.log(exposure)` with
+PoissonRegressor); coefficients known in advance (a fixed offset
+`v * X[:, j]` is coefficient j fixed at v); starting from an existing model's
+log-odds and learning only the correction other features add; the case-control
+prior correction of the intercept (King and Zeng 2001), which is a constant
+offset.
+
+Changes
+- `LinearModelLoss(offset=None)`: the offset enters every loss, gradient,
+  Hessian and Hessian-product through `weight_intercept_raw`, which gains
+  `add_offset=True`.
+- `NewtonSolver.line_search`: the Newton direction is linear in the
+  coefficients and is now computed with `add_offset=False`. Without this,
+  `raw(coef + t * d)` counted the offset twice per step and newton-cholesky
+  stalled or fell back to lbfgs whenever the offset was nonzero.
+- `LogisticRegression.fit / decision_function / predict / predict_proba /
+  predict_log_proba(offset=None)`: binary problems with the solvers lbfgs,
+  newton-cg and newton-cholesky; other solvers and multiclass raise before
+  liblinear's early return. Metadata routing works through the usual
+  `set_fit_request(offset=True)` / `set_predict_proba_request(offset=True)`.
+- `LogisticRegressionCV.fit(offset=None)`: each fold fits on its training part
+  of the offset and scores with its test part; the refit uses all of it.
+- `_GeneralizedLinearRegressor.fit / predict / score(offset=None)` for
+  PoissonRegressor, GammaRegressor and TweedieRegressor (on the link scale).
+
+Tests: zero offset equals no offset; the fit minimises the stated objective
+(direct scipy minimisation) for every supported solver; a constant offset only
+moves the intercept; C -> 0 keeps the offset's own prediction; newton-cholesky
+converges with a large offset; prediction methods add the offset; validation;
+sparse and float32; clone / pickle; pipeline routing; LogisticRegressionCV
+equals a manual fold loop; Poisson with offset log(exposure) equals the rate
+model with sample_weight = exposure. Equality with statsmodels GLM(offset=) and
+glum to 1e-6 is checked outside this patch (it needs those packages).
+
+Base: scikit-learn 1.9.1. The glm.py hunks carry no context lines: apply with
+    git apply --unidiff-zero scikit-learn-offset.patch
+or `patch -p1 < scikit-learn-offset.patch`.
+
+---
+diff --git a/sklearn/linear_model/_glm/_newton_solver.py b/sklearn/linear_model/_glm/_newton_solver.py
+index 537be0b..d893c53 100644
+--- a/sklearn/linear_model/_glm/_newton_solver.py
++++ b/sklearn/linear_model/_glm/_newton_solver.py
+@@ -224,8 +224,10 @@ class NewtonSolver(ABC):
+         # gradient_times_newton = self.gradient @ self.coef_newton
+         # was computed in inner_solve.
+         armijo_term = sigma * self.gradient_times_newton
++        # The Newton direction is linear in the coefficients and carries no offset:
++        # raw(coef + t * coef_newton) = raw(coef) + t * (X @ coef_newton[:-1] + ...).
+         _, _, raw_prediction_newton = self.linear_loss.weight_intercept_raw(
+-            self.coef_newton, X
++            self.coef_newton, X, add_offset=False
+         )
+ 
+         self.coef_old = self.coef
+diff --git a/sklearn/linear_model/_linear_loss.py b/sklearn/linear_model/_linear_loss.py
+index 1e15612..30be326 100644
+--- a/sklearn/linear_model/_linear_loss.py
++++ b/sklearn/linear_model/_linear_loss.py
+@@ -110,11 +110,19 @@ class LinearModelLoss:
+     ----------
+     base_loss : instance of class BaseLoss from sklearn._loss.
+     fit_intercept : bool
++    offset : ndarray of shape (n_samples,) or (n_samples, n_classes), default=None
++        Fixed per-sample offset added to the raw prediction,
++        ``raw_prediction = X @ coef + intercept + offset``. Typical uses are a
++        log-exposure in count models or a known log-odds that the fit starts
++        from. The offset is data, not a parameter: it has no gradient and the L2
++        penalty shrinks the fit towards the offset's own prediction.
++        ``None`` means no offset.
+     """
+ 
+-    def __init__(self, base_loss, fit_intercept):
++    def __init__(self, base_loss, fit_intercept, offset=None):
+         self.base_loss = base_loss
+         self.fit_intercept = fit_intercept
++        self.offset = offset
+ 
+     def init_zero_coef(self, X, dtype=None):
+         """Allocate coef of correct shape with zeros.
+@@ -183,7 +191,7 @@ class LinearModelLoss:
+ 
+         return weights, intercept
+ 
+-    def weight_intercept_raw(self, coef, X):
++    def weight_intercept_raw(self, coef, X, add_offset=True):
+         """Helper function to get coefficients, intercept and raw_prediction.
+ 
+         Parameters
+@@ -195,6 +203,10 @@ class LinearModelLoss:
+             coef.reshape((n_classes, -1), order="F").
+         X : {array-like, sparse matrix} of shape (n_samples, n_features)
+             Training data.
++        add_offset : bool, default=True
++            Whether to add ``self.offset`` to the raw prediction. Set it to False
++            when ``coef`` is a step direction: the raw prediction is linear in
++            the direction and must not carry the offset.
+ 
+         Returns
+         -------
+@@ -220,6 +232,10 @@ class LinearModelLoss:
+         else:
+             # weights has shape (n_classes, n_dof)
+             raw_prediction = X @ weights_xp.T + intercept_xp
++        if add_offset and self.offset is not None:
++            raw_prediction = raw_prediction + xp.asarray(
++                self.offset, dtype=X.dtype, device=device_
++            )
+ 
+         return weights, intercept, raw_prediction
+ 
+diff --git a/sklearn/linear_model/_logistic.py b/sklearn/linear_model/_logistic.py
+index c007201..48ffb2a 100644
+--- a/sklearn/linear_model/_logistic.py
++++ b/sklearn/linear_model/_logistic.py
+@@ -11,7 +11,8 @@ import warnings
+ from numbers import Integral, Real
+ 
+ import numpy as np
+-from scipy import optimize
++from scipy import optimize, sparse
++from scipy.special import expit
+ 
+ from sklearn._loss.loss import (
+     HalfBinomialLoss,
+@@ -26,7 +27,7 @@ from sklearn.linear_model._base import (
+     LinearClassifierMixin,
+     SparseCoefMixin,
+ )
+-from sklearn.linear_model._glm.glm import NewtonCholeskySolver
++from sklearn.linear_model._glm.glm import NewtonCholeskySolver, _check_offset
+ from sklearn.linear_model._linear_loss import LinearModelLoss
+ from sklearn.linear_model._sag import sag_solver
+ from sklearn.metrics import get_scorer, get_scorer_names, make_scorer
+@@ -101,6 +102,23 @@ def _check_solver(solver, penalty, dual):
+     return solver
+ 
+ 
++_OFFSET_SOLVERS = ("lbfgs", "newton-cg", "newton-cholesky")
++
++
++def _check_offset_support(solver, n_classes):
++    """Raise if `offset` cannot be used with this solver or number of classes."""
++    if solver not in _OFFSET_SOLVERS:
++        raise ValueError(
++            f"offset is only supported by the solvers {_OFFSET_SOLVERS}; "
++            f"got solver={solver!r}."
++        )
++    if n_classes > 2:
++        raise ValueError(
++            "offset is only supported for binary problems; got "
++            f"{n_classes} classes."
++        )
++
++
+ class _LbfgsCallbackBridge:
+     """Forward sklearn callbacks to ``scipy.optimize.minimize`` for L-BFGS.
+ 
+@@ -240,6 +258,7 @@ def _logistic_regression_path(
+     n_threads=1,
+     callback_ctx=None,
+     estimator=None,
++    offset=None,
+ ):
+     """Compute a Logistic Regression model for a list of regularization
+     parameters.
+@@ -365,6 +384,11 @@ def _logistic_regression_path(
+         The estimator instance in which fit this function is called, forwarded to the
+         callbacks if callback_ctx is not None.
+ 
++    offset : array-like of shape (n_samples,), default=None
++        Fixed offset added to the raw prediction of every sample,
++        ``X @ coef + intercept + offset``. Binary problems and the solvers
++        'lbfgs', 'newton-cg' and 'newton-cholesky' only.
++
+     Returns
+     -------
+     coefs : ndarray of shape (n_cs, n_classes, n_features + int(fit_intercept)) or \
+@@ -414,6 +438,9 @@ def _logistic_regression_path(
+     n_samples, n_features = X.shape
+     n_classes = classes.shape[0] if hasattr(classes, "shape") else len(classes)
+     is_binary = n_classes == 2
++    if offset is not None:
++        _check_offset_support(solver, n_classes)
++        offset = _check_offset(offset, n_samples, X.dtype)
+ 
+     if solver == "liblinear" and not is_binary:
+         raise ValueError(
+@@ -512,6 +539,7 @@ def _logistic_regression_path(
+                 else HalfBinomialLossArrayAPI(xp=xp, device=device_)
+             ),
+             fit_intercept=fit_intercept,
++            offset=offset,
+         )
+         if solver == "lbfgs":
+             func = loss.loss_gradient
+@@ -741,6 +769,7 @@ def _log_reg_scoring_path(
+     sample_weight,
+     l1_ratio,
+     score_params,
++    offset=None,
+ ):
+     """Computes scores across logistic_regression_path
+ 
+@@ -850,6 +879,11 @@ def _log_reg_scoring_path(
+     score_params : dict
+         Parameters to pass to the `score` method of the underlying scorer.
+ 
++    offset : array-like of shape (n_samples,), default=None
++        Fixed offset of the raw prediction, sliced like `sample_weight`: the
++        training part is passed to the fit and the test part is added to the
++        scores of the test samples.
++
+     Returns
+     -------
+     coefs : ndarray of shape (n_cs, n_classes, n_features + int(fit_intercept)) or \
+@@ -869,6 +903,11 @@ def _log_reg_scoring_path(
+     n_iter : ndarray of shape (n_cs,)
+         Actual number of iteration for each C in Cs.
+     """
++    offset_train = None
++    if offset is not None:
++        offset = _check_offset(offset, X.shape[0], X.dtype)
++        offset_train = offset[train]
++
+     X_train = X[train]
+     X_test = X[test]
+     y_train = y[train]
+@@ -905,8 +944,19 @@ def _log_reg_scoring_path(
+         sample_weight=sw_train,
+         callback_ctx=None,
+         estimator=None,
++        offset=offset_train,
+     )
+ 
++    if offset is not None:
++        # Scorers call the prediction methods without metadata. The test offset is
++        # appended to X_test as one more column whose coefficient is fixed at 1, so
++        # the scores are X_test @ coef + intercept + offset_test.
++        offset_test = offset[test][:, None]
++        if sparse.issparse(X_test):
++            X_test = sparse.hstack([X_test, offset_test], format="csr")
++        else:
++            X_test = np.hstack([X_test, offset_test])
++
+     log_reg = LogisticRegression(solver=solver)
+ 
+     # The score method of Logistic Regression has a classes_ attribute.
+@@ -965,6 +1015,8 @@ def _log_reg_scoring_path(
+         else:
+             log_reg.coef_ = w
+             log_reg.intercept_ = 0.0
++        if offset is not None:
++            log_reg.coef_ = np.append(log_reg.coef_, 1.0)
+ 
+         scores.append(calc_score(log_reg))
+ 
+@@ -1330,7 +1382,7 @@ class LogisticRegression(
+         return super().set_callbacks(*callbacks)
+ 
+     @_fit_context(prefer_skip_nested_validation=True)
+-    def fit(self, X, y, sample_weight=None):
++    def fit(self, X, y, sample_weight=None, offset=None):
+         """
+         Fit the model according to the given training data.
+ 
+@@ -1350,6 +1402,15 @@ class LogisticRegression(
+             .. versionadded:: 0.17
+                *sample_weight* support to LogisticRegression.
+ 
++        offset : array-like of shape (n_samples,), default=None
++            Fixed offset added to the raw prediction of each sample,
++            ``X @ coef_ + intercept_ + offset``, for instance a known log-odds
++            the fit should start from. The offset is not stored: pass the same
++            kind of offset to the prediction methods. Only for binary problems
++            and the solvers 'lbfgs', 'newton-cg' and 'newton-cholesky'.
++
++            .. versionadded:: 1.10
++
+         Returns
+         -------
+         self
+@@ -1448,6 +1509,9 @@ class LogisticRegression(
+         self.classes_ = xp_y.unique_values(y)
+         n_classes = size(self.classes_)
+         is_binary = n_classes == 2
++        if offset is not None:
++            _check_offset_support(solver, n_classes)
++            offset = _check_offset(offset, X.shape[0], X.dtype)
+ 
+         # With lbfgs, the fit task will have a subtask even if max_iter is 0.
+         # There's also always one extra empty subtask due to the scipy.optimize.minimize
+@@ -1541,6 +1605,7 @@ class LogisticRegression(
+             n_threads=n_threads,
+             callback_ctx=callback_ctx,
+             estimator=self,
++            offset=offset,
+         )
+ 
+         self.n_iter_ = xp.asarray(n_iter, dtype=xp.int32)
+@@ -1570,7 +1635,63 @@ class LogisticRegression(
+ 
+         return self
+ 
+-    def predict_proba(self, X):
++    def decision_function(self, X, offset=None):
++        """
++        Predict confidence scores for samples.
++
++        The confidence score for a sample is proportional to the signed
++        distance of that sample to the hyperplane.
++
++        Parameters
++        ----------
++        X : {array-like, sparse matrix} of shape (n_samples, n_features)
++            The data matrix for which we want to get the confidence scores.
++
++        offset : array-like of shape (n_samples,), default=None
++            Fixed offset added to the scores, ``X @ coef_.T + intercept_ +
++            offset``. Binary problems only.
++
++            .. versionadded:: 1.10
++
++        Returns
++        -------
++        scores : ndarray of shape (n_samples,) or (n_samples, n_classes)
++            Confidence scores per `(n_samples, n_classes)` combination. In the
++            binary case, confidence score for `self.classes_[1]` where >0 means
++            this class would be predicted.
++        """
++        scores = super().decision_function(X)
++        if offset is None:
++            return scores
++        if scores.ndim != 1:
++            raise ValueError("offset is only supported for binary problems.")
++        return scores + _check_offset(offset, scores.shape[0], scores.dtype)
++
++    def predict(self, X, offset=None):
++        """
++        Predict class labels for samples in X.
++
++        Parameters
++        ----------
++        X : {array-like, sparse matrix} of shape (n_samples, n_features)
++            The data matrix for which we want to get the predictions.
++
++        offset : array-like of shape (n_samples,), default=None
++            Fixed offset added to the scores. Binary problems only.
++
++            .. versionadded:: 1.10
++
++        Returns
++        -------
++        y_pred : ndarray of shape (n_samples,)
++            Vector containing the class labels for each sample.
++        """
++        if offset is None:
++            return super().predict(X)
++        scores = self.decision_function(X, offset=offset)
++        return self.classes_[(scores > 0).astype(int)]
++
++    def predict_proba(self, X, offset=None):
+         """
+         Probability estimates.
+ 
+@@ -1586,6 +1707,11 @@ class LogisticRegression(
+             Vector to be scored, where `n_samples` is the number of samples and
+             `n_features` is the number of features.
+ 
++        offset : array-like of shape (n_samples,), default=None
++            Fixed offset added to the raw prediction. Binary problems only.
++
++            .. versionadded:: 1.10
++
+         Returns
+         -------
+         T : array-like of shape (n_samples, n_classes)
+@@ -1596,13 +1722,18 @@ class LogisticRegression(
+         check_same_namespace(X, self, attribute="coef_", method="predict_proba")
+ 
+         is_binary = size(self.classes_) <= 2
++        if offset is not None:
++            if not is_binary:
++                raise ValueError("offset is only supported for binary problems.")
++            proba = expit(self.decision_function(X, offset=offset))
++            return np.stack([1.0 - proba, proba], axis=1)
+         if is_binary:
+             return super()._predict_proba_lr(X)
+         else:
+             decision_2d = self.decision_function(X)
+             return softmax(decision_2d, copy=False)
+ 
+-    def predict_log_proba(self, X):
++    def predict_log_proba(self, X, offset=None):
+         """
+         Predict logarithm of probability estimates.
+ 
+@@ -1615,6 +1746,11 @@ class LogisticRegression(
+             Vector to be scored, where `n_samples` is the number of samples and
+             `n_features` is the number of features.
+ 
++        offset : array-like of shape (n_samples,), default=None
++            Fixed offset added to the raw prediction. Binary problems only.
++
++            .. versionadded:: 1.10
++
+         Returns
+         -------
+         T : array-like of shape (n_samples, n_classes)
+@@ -1623,6 +1759,8 @@ class LogisticRegression(
+         """
+         check_same_namespace(X, self, attribute="coef_", method="predict_log_proba")
+         xp, _ = get_namespace(X)
++        if offset is not None:
++            return xp.log(self.predict_proba(X, offset=offset))
+         return xp.log(self.predict_proba(X))
+ 
+     def __sklearn_tags__(self):
+@@ -2038,7 +2176,7 @@ class LogisticRegressionCV(LogisticRegression, LinearClassifierMixin, BaseEstima
+         self.use_legacy_attributes = use_legacy_attributes
+ 
+     @_fit_context(prefer_skip_nested_validation=True)
+-    def fit(self, X, y, sample_weight=None, **params):
++    def fit(self, X, y, sample_weight=None, offset=None, **params):
+         """Fit the model according to the given training data.
+ 
+         Parameters
+@@ -2054,6 +2192,14 @@ class LogisticRegressionCV(LogisticRegression, LinearClassifierMixin, BaseEstima
+             Array of weights that are assigned to individual samples.
+             If not provided, then each sample is given unit weight.
+ 
++        offset : array-like of shape (n_samples,), default=None
++            Fixed offset added to the raw prediction of each sample. Each fold
++            fits on its training part and scores with its test part; the final
++            refit uses all of it. Binary problems and the solvers 'lbfgs',
++            'newton-cg' and 'newton-cholesky' only.
++
++            .. versionadded:: 1.10
++
+         **params : dict
+             Parameters to pass to the underlying splitter and scorer.
+ 
+@@ -2201,6 +2347,9 @@ class LogisticRegressionCV(LogisticRegression, LinearClassifierMixin, BaseEstima
+                 " in the data, but the data contains only one"
+                 f" class: {self.classes_[0]}."
+             )
++        if offset is not None:
++            _check_offset_support(solver, n_classes)
++            offset = _check_offset(offset, X.shape[0], X.dtype)
+ 
+         if solver in ["sag", "saga"]:
+             max_squared_sum = row_norms(X, squared=True).max()
+@@ -2279,6 +2428,7 @@ class LogisticRegressionCV(LogisticRegression, LinearClassifierMixin, BaseEstima
+                 sample_weight=sample_weight,
+                 l1_ratio=l1_ratio,
+                 score_params=routed_params.scorer.score,
++                offset=offset,
+             )
+             for train, test in folds
+             for l1_ratio in l1_ratios_
+@@ -2357,6 +2507,7 @@ class LogisticRegressionCV(LogisticRegression, LinearClassifierMixin, BaseEstima
+                 max_squared_sum=max_squared_sum,
+                 sample_weight=sample_weight,
+                 l1_ratio=l1_ratio_,
++                offset=offset,
+             )
+             w = w[0]
+ 
+diff --git a/sklearn/linear_model/_glm/glm.py b/sklearn/linear_model/_glm/glm.py
+index 5e31360..9f68c48 100644
+--- a/sklearn/linear_model/_glm/glm.py
++++ b/sklearn/linear_model/_glm/glm.py
+@@ -43,0 +44,20 @@ from sklearn.utils.validation import (
++def _check_offset(offset, n_samples, dtype):
++    """Validate `offset` as a finite 1d array of length `n_samples`."""
++    offset = check_array(offset, ensure_2d=False, dtype=dtype, input_name="offset")
++    if offset.ndim != 1 or offset.shape[0] != n_samples:
++        raise ValueError(
++            f"offset must have shape ({n_samples},); got {offset.shape}."
++        )
++    return offset
++
++
++def _add_offset(raw_prediction, offset):
++    """Return `raw_prediction + offset`; `offset=None` means no offset."""
++    if offset is None:
++        return raw_prediction
++    xp, _, device_ = get_namespace_and_device(raw_prediction)
++    offset = _check_offset(offset, raw_prediction.shape[0], "numeric")
++    offset = move_to(offset, xp=xp, device=device_)
++    return raw_prediction + xp.astype(offset, raw_prediction.dtype)
++
++
+@@ -185 +205 @@ class _GeneralizedLinearRegressor(RegressorMixin, BaseEstimator):
+-    def fit(self, X, y, sample_weight=None):
++    def fit(self, X, y, sample_weight=None, offset=None):
+@@ -198,0 +219,8 @@ class _GeneralizedLinearRegressor(RegressorMixin, BaseEstimator):
++        offset : array-like of shape (n_samples,), default=None
++            Fixed offset added to the raw prediction (on the link scale),
++            ``X @ coef_ + intercept_ + offset``, e.g. ``log(exposure)`` for a
++            log link. The offset is not stored: pass the same kind of offset to
++            :meth:`predict` and :meth:`score`.
++
++            .. versionadded:: 1.10
++
+@@ -222 +250,6 @@ class _GeneralizedLinearRegressor(RegressorMixin, BaseEstimator):
+-        y, sample_weight = move_to(y, sample_weight, xp=xp, device=device_)
++        if offset is not None:
++            offset = _check_offset(offset, X.shape[0], loss_dtype)
++
++        y, sample_weight, offset = move_to(
++            y, sample_weight, offset, xp=xp, device=device_
++        )
+@@ -229,0 +263 @@ class _GeneralizedLinearRegressor(RegressorMixin, BaseEstimator):
++            offset=offset,
+@@ -269,0 +304,2 @@ class _GeneralizedLinearRegressor(RegressorMixin, BaseEstimator):
++                if offset is not None:
++                    coef[-1] -= _average(offset, weights=sample_weight)
+@@ -369 +405 @@ class _GeneralizedLinearRegressor(RegressorMixin, BaseEstimator):
+-    def predict(self, X):
++    def predict(self, X, offset=None):
+@@ -376,0 +413,5 @@ class _GeneralizedLinearRegressor(RegressorMixin, BaseEstimator):
++        offset : array-like of shape (n_samples,), default=None
++            Fixed offset added to the raw prediction.
++
++            .. versionadded:: 1.10
++
+@@ -383,0 +425 @@ class _GeneralizedLinearRegressor(RegressorMixin, BaseEstimator):
++        raw_prediction = _add_offset(raw_prediction, offset)
+@@ -387 +429 @@ class _GeneralizedLinearRegressor(RegressorMixin, BaseEstimator):
+-    def score(self, X, y, sample_weight=None):
++    def score(self, X, y, sample_weight=None, offset=None):
+@@ -412,0 +455,6 @@ class _GeneralizedLinearRegressor(RegressorMixin, BaseEstimator):
++        offset : array-like of shape (n_samples,), default=None
++            Fixed offset added to the raw prediction of the model. The null
++            model stays the weighted mean of `y` without offset.
++
++            .. versionadded:: 1.10
++
+@@ -416 +464 @@ class _GeneralizedLinearRegressor(RegressorMixin, BaseEstimator):
+-            D^2 of self.predict(X) w.r.t. y.
++            D^2 of self.predict(X, offset=offset) w.r.t. y.
+@@ -424,0 +473 @@ class _GeneralizedLinearRegressor(RegressorMixin, BaseEstimator):
++        raw_prediction = _add_offset(raw_prediction, offset)
+diff --git a/sklearn/linear_model/_glm/tests/test_glm.py b/sklearn/linear_model/_glm/tests/test_glm.py
+index 1d85aeb..55fa55c 100644
+--- a/sklearn/linear_model/_glm/tests/test_glm.py
++++ b/sklearn/linear_model/_glm/tests/test_glm.py
+@@ -1254,3 +1254,88 @@ def test_poisson_regressor_array_api_warm_start(
+         reg_xp.predict(X_xp)
+         # fit again and ensure there is no error
+         reg_xp.fit(X_xp, y_xp)
++
++
++# Tests of the `offset` parameter (see GitHub issue #24614).
++@pytest.mark.parametrize("solver", ["lbfgs", "newton-cholesky"])
++@pytest.mark.parametrize("fit_intercept", [True, False])
++def test_glm_offset_zero_is_no_offset(solver, fit_intercept):
++    X, y = make_regression(n_samples=200, n_features=4, noise=1, random_state=0)
++    y = np.exp(y / np.abs(y).max())
++    params = dict(alpha=0.1, solver=solver, fit_intercept=fit_intercept, tol=1e-10)
++    glm = PoissonRegressor(**params).fit(X, y)
++    glm_zero = PoissonRegressor(**params).fit(X, y, offset=np.zeros(y.shape[0]))
++    assert_allclose(glm_zero.coef_, glm.coef_, rtol=1e-8, atol=1e-10)
++    assert_allclose(glm_zero.intercept_, glm.intercept_, rtol=1e-8, atol=1e-10)
++
++
++@pytest.mark.parametrize("solver", ["lbfgs", "newton-cholesky"])
++@pytest.mark.parametrize("alpha", [0.0, 0.1])
++def test_poisson_offset_is_log_exposure(solver, alpha):
++    """offset = log(exposure) minimizes the stated objective with the offset."""
++    rng = np.random.RandomState(42)
++    n_samples, n_features = 300, 3
++    X = rng.normal(size=(n_samples, n_features))
++    exposure = rng.uniform(0.5, 5, size=n_samples)
++    rate = np.exp(X @ np.array([0.3, -0.2, 0.1]) - 0.5)
++    y = rng.poisson(rate * exposure)
++    offset = np.log(exposure)
++    sw = rng.uniform(0.5, 1.5, size=n_samples)
++    glm = PoissonRegressor(alpha=alpha, solver=solver, tol=1e-10, max_iter=1000)
++    glm.fit(X, y, sample_weight=sw, offset=offset)
++
++    def objective(theta):
++        raw = X @ theta[:-1] + theta[-1] + offset
++        loss = np.exp(raw) - y * raw  # half Poisson deviance up to a constant
++        return sw @ loss / sw.sum() + 0.5 * alpha * theta[:-1] @ theta[:-1]
++
++    expected = minimize(
++        objective, np.zeros(n_features + 1), method="BFGS", options={"gtol": 1e-10}
++    ).x
++    assert_allclose(np.r_[glm.coef_, glm.intercept_], expected, atol=1e-5)
++    mu = np.exp(X @ glm.coef_ + glm.intercept_ + offset)
++    assert_allclose(glm.predict(X, offset=offset), mu)
++    assert_allclose(glm.predict(X), mu / exposure)
++
++
++def test_poisson_offset_equals_rate_with_sample_weight():
++    """Unpenalized: offset log(e) on counts equals sample_weight e on rates y / e."""
++    rng = np.random.RandomState(0)
++    X = rng.normal(size=(200, 2))
++    exposure = rng.uniform(0.5, 3, size=200)
++    y = rng.poisson(np.exp(X @ np.array([0.5, -0.3])) * exposure)
++    a = PoissonRegressor(alpha=0, tol=1e-12, solver="newton-cholesky")
++    a.fit(X, y, offset=np.log(exposure))
++    b = PoissonRegressor(alpha=0, tol=1e-12, solver="newton-cholesky")
++    b.fit(X, y / exposure, sample_weight=exposure)
++    assert_allclose(a.coef_, b.coef_, rtol=1e-7)
++    assert_allclose(a.intercept_, b.intercept_, rtol=1e-7)
++
++
++def test_glm_offset_newton_cholesky_large_offset():
++    """The Newton line search must not add the offset to the step direction."""
++    rng = np.random.RandomState(1)
++    X = rng.normal(size=(300, 3))
++    offset = rng.uniform(2, 6, size=300)
++    y = rng.poisson(np.exp(X @ np.array([0.2, -0.1, 0.05]) + offset))
++    with warnings.catch_warnings():
++        warnings.simplefilter("error", ConvergenceWarning)
++        nc = PoissonRegressor(alpha=1e-3, solver="newton-cholesky", tol=1e-10)
++        nc.fit(X, y, offset=offset)
++    lb = PoissonRegressor(alpha=1e-3, solver="lbfgs", tol=1e-12, max_iter=10_000)
++    lb.fit(X, y, offset=offset)
++    assert nc.n_iter_ < 30
++    assert_allclose(nc.coef_, lb.coef_, rtol=1e-5, atol=1e-6)
++
++
++def test_glm_offset_score_and_validation():
++    rng = np.random.RandomState(2)
++    X = rng.normal(size=(100, 2))
++    offset = rng.normal(size=100)
++    y = rng.poisson(np.exp(offset))
++    glm = PoissonRegressor().fit(X, y, offset=offset)
++    assert glm.score(X, y, offset=offset) > glm.score(X, y)
++    with pytest.raises(ValueError, match="offset must have shape"):
++        PoissonRegressor().fit(X, y, offset=offset[:10])
++    with pytest.raises(ValueError, match="NaN"):
++        PoissonRegressor().fit(X, y, offset=np.r_[np.nan, offset[1:]])
+diff --git a/sklearn/linear_model/tests/test_linear_loss.py b/sklearn/linear_model/tests/test_linear_loss.py
+index a273656..e12fb0c 100644
+--- a/sklearn/linear_model/tests/test_linear_loss.py
++++ b/sklearn/linear_model/tests/test_linear_loss.py
+@@ -508,3 +508,50 @@ def test_linear_loss_gradient_hessian_raises_wrong_out_parameters():
+             gradient_out=None,
+             hessian_out=hessian_out,
+         )
++
++
++@pytest.mark.parametrize("base_loss", LOSSES)
++@pytest.mark.parametrize("fit_intercept", [False, True])
++@pytest.mark.parametrize("sample_weight", [None, "range"])
++def test_offset_equals_shifted_raw_prediction(base_loss, fit_intercept, sample_weight):
++    """Loss, gradient and hessian with an offset equal those at raw + offset."""
++    n_samples, n_features = 10, 5
++    loss = LinearModelLoss(base_loss=base_loss(), fit_intercept=fit_intercept)
++    X, y, coef = random_X_y_coef(loss, n_samples=n_samples, n_features=n_features)
++    rng = np.random.RandomState(0)
++    if base_loss.is_multiclass:
++        offset = rng.normal(size=(n_samples, loss.base_loss.n_classes))
++    else:
++        offset = rng.normal(size=n_samples)
++    if sample_weight == "range":
++        sample_weight = np.linspace(1, y.shape[0], num=y.shape[0])
++    loss_off = LinearModelLoss(
++        base_loss=base_loss(), fit_intercept=fit_intercept, offset=offset
++    )
++    _, _, raw = loss.weight_intercept_raw(coef, X)
++    _, _, raw_off = loss_off.weight_intercept_raw(coef, X)
++    assert_allclose(raw_off, raw + offset)
++    _, _, raw_dir = loss_off.weight_intercept_raw(coef, X, add_offset=False)
++    assert_allclose(raw_dir, raw)
++    kw = dict(sample_weight=sample_weight, l2_reg_strength=0.3)
++    assert_allclose(
++        loss_off.loss(coef, X, y, **kw), loss.loss(coef, X, y, raw_prediction=raw_off, **kw)
++    )
++    l_off, g_off = loss_off.loss_gradient(coef, X, y, **kw)
++    l_ref, g_ref = loss.loss_gradient(coef, X, y, raw_prediction=raw_off, **kw)
++    assert_allclose(l_off, l_ref)
++    assert_allclose(g_off, g_ref)
++    assert_allclose(loss_off.gradient(coef, X, y, **kw), g_ref)
++    g_h, h_h, _ = loss_off.gradient_hessian(coef, X, y, **kw)
++    g_h_ref, h_h_ref, _ = loss.gradient_hessian(coef, X, y, raw_prediction=raw_off, **kw)
++    assert_allclose(g_h, g_h_ref)
++    assert_allclose(h_h, h_h_ref)
++    g_p, hessp = loss_off.gradient_hessian_product(coef, X, y, **kw)
++    assert_allclose(g_p, g_ref)
++    vec = rng.normal(size=coef.size).reshape(coef.shape)
++    if base_loss.is_multiclass:
++        # hessian is (n_classes * n_dof, n_classes * n_dof) in F-order of coef
++        vec_flat = vec.ravel(order="F")
++        assert_allclose(hessp(vec).ravel(order="F"), h_h_ref @ vec_flat, rtol=1e-6)
++    else:
++        assert_allclose(hessp(vec), h_h_ref @ vec, rtol=1e-6)
+diff --git a/sklearn/linear_model/tests/test_logistic.py b/sklearn/linear_model/tests/test_logistic.py
+index 6439655..b30dd37 100644
+--- a/sklearn/linear_model/tests/test_logistic.py
++++ b/sklearn/linear_model/tests/test_logistic.py
+@@ -1,5 +1,6 @@
+ import itertools
+ import os
++import pickle
+ import re
+ import warnings
+ 
+@@ -10,7 +11,7 @@ from numpy.testing import (
+     assert_array_almost_equal,
+     assert_array_equal,
+ )
+-from scipy import sparse
++from scipy import optimize, sparse
+ from scipy.linalg import LinAlgWarning, svd
+ 
+ from sklearn import config_context
+@@ -3004,3 +3005,187 @@ def test_logistic_regression_callback_support_warning():
+         match="Callbacks are only supported in LogisticRegression for solver='lbfgs'",
+     ):
+         LogisticRegression(solver="liblinear").set_callbacks(cb)
++
++
++# Tests of the `offset` parameter (see GitHub issue #24614).
++OFFSET_SOLVERS = ["lbfgs", "newton-cg", "newton-cholesky"]
++
++
++def _offset_data(n_samples=300, n_features=4, seed=0):
++    rng = np.random.RandomState(seed)
++    X = rng.normal(size=(n_samples, n_features))
++    offset = 1.5 * rng.normal(size=n_samples)
++    raw = X @ np.linspace(1, -1, n_features) + 0.3 + offset
++    y = (rng.uniform(size=n_samples) < 1 / (1 + np.exp(-raw))).astype(int)
++    return X, y, offset
++
++
++@pytest.mark.parametrize("solver", OFFSET_SOLVERS)
++@pytest.mark.parametrize("fit_intercept", [True, False])
++def test_logistic_offset_zero_is_no_offset(solver, fit_intercept):
++    """offset=zeros gives the same fit as offset=None."""
++    X, y, _ = _offset_data()
++    params = dict(solver=solver, fit_intercept=fit_intercept, tol=1e-10, max_iter=1000)
++    lr = LogisticRegression(**params).fit(X, y)
++    lr_zero = LogisticRegression(**params).fit(X, y, offset=np.zeros(y.shape[0]))
++    assert_allclose(lr_zero.coef_, lr.coef_, rtol=1e-10, atol=1e-12)
++    assert_allclose(lr_zero.intercept_, lr.intercept_, rtol=1e-10, atol=1e-12)
++
++
++@pytest.mark.parametrize("solver", OFFSET_SOLVERS)
++@pytest.mark.parametrize("C", [0.05, 1.0, np.inf])
++def test_logistic_offset_minimizes_objective(solver, C):
++    """The fit minimizes C * sum(sw * loss(X @ w + b + offset)) + ||w||^2 / 2."""
++    X, y, offset = _offset_data()
++    sw = np.random.RandomState(1).uniform(0.5, 1.5, size=y.shape[0])
++
++    def objective(theta):
++        raw = X @ theta[:-1] + theta[-1] + offset
++        loss = np.logaddexp(0, raw) - y * raw
++        penalty = 0 if np.isinf(C) else 0.5 * theta[:-1] @ theta[:-1] / C
++        return sw @ loss + penalty
++
++    expected = optimize.minimize(
++        objective, np.zeros(X.shape[1] + 1), method="BFGS", options={"gtol": 1e-10}
++    ).x
++    lr = LogisticRegression(C=C, solver=solver, tol=1e-10, max_iter=1000)
++    lr.fit(X, y, sample_weight=sw, offset=offset)
++    assert_allclose(np.r_[lr.coef_.ravel(), lr.intercept_], expected, atol=1e-5)
++
++
++@pytest.mark.parametrize("solver", OFFSET_SOLVERS)
++def test_logistic_constant_offset_shifts_intercept(solver):
++    """A constant offset c moves only the intercept, by -c."""
++    X, y, _ = _offset_data()
++    params = dict(solver=solver, tol=1e-10, max_iter=1000)
++    lr = LogisticRegression(**params).fit(X, y)
++    lr_c = LogisticRegression(**params).fit(X, y, offset=np.full(y.shape[0], 2.0))
++    assert_allclose(lr_c.coef_, lr.coef_, atol=1e-7)
++    assert_allclose(lr_c.intercept_, lr.intercept_ - 2.0, atol=1e-7)
++
++
++@pytest.mark.parametrize("solver", OFFSET_SOLVERS)
++def test_logistic_offset_heavy_penalty_keeps_offset_prediction(solver):
++    """With C -> 0 and no intercept, the prediction is sigmoid(offset)."""
++    X, y, offset = _offset_data()
++    lr = LogisticRegression(C=1e-10, fit_intercept=False, solver=solver)
++    lr.fit(X, y, offset=offset)
++    assert_allclose(lr.predict_proba(X, offset=offset)[:, 1], 1 / (1 + np.exp(-offset)))
++
++
++def test_logistic_offset_newton_cholesky_large_offset():
++    """The Newton line search must not add the offset to the step direction."""
++    X, y, offset = _offset_data()
++    offset = 8 * offset
++    params = dict(tol=1e-10, max_iter=100)
++    lr_nc = LogisticRegression(solver="newton-cholesky", **params)
++    with warnings.catch_warnings():
++        warnings.simplefilter("error", ConvergenceWarning)
++        lr_nc.fit(X, y, offset=offset)
++    lr = LogisticRegression(solver="lbfgs", **params).fit(X, y, offset=offset)
++    assert lr_nc.n_iter_[0] < 30
++    assert_allclose(lr_nc.coef_, lr.coef_, atol=1e-6)
++
++
++def test_logistic_offset_prediction_methods():
++    X, y, offset = _offset_data()
++    lr = LogisticRegression().fit(X, y, offset=offset)
++    base = lr.decision_function(X)
++    scores = lr.decision_function(X, offset=offset)
++    assert_allclose(scores, base + offset)
++    proba = lr.predict_proba(X, offset=offset)
++    assert_allclose(proba[:, 1], 1 / (1 + np.exp(-scores)))
++    assert_allclose(proba.sum(axis=1), 1)
++    assert_allclose(lr.predict_log_proba(X, offset=offset), np.log(proba))
++    assert_array_equal(lr.predict(X, offset=offset), lr.classes_[(scores > 0).astype(int)])
++    assert_array_equal(lr.predict(X), lr.predict(X, offset=None))
++
++
++@pytest.mark.parametrize("csr_container", CSR_CONTAINERS)
++def test_logistic_offset_sparse_and_float32(csr_container):
++    X, y, offset = _offset_data()
++    dense = LogisticRegression(tol=1e-10).fit(X, y, offset=offset)
++    sp = LogisticRegression(tol=1e-10).fit(csr_container(X), y, offset=offset)
++    f32 = LogisticRegression(tol=1e-6).fit(X.astype(np.float32), y, offset=offset)
++    assert_allclose(sp.coef_, dense.coef_, atol=1e-6)
++    assert_allclose(f32.coef_, dense.coef_, atol=1e-3)
++    assert f32.coef_.dtype == np.float32
++
++
++@pytest.mark.parametrize(
++    "offset, msg",
++    [
++        (np.zeros(10), "offset must have shape"),
++        (np.zeros((300, 2)), "offset must have shape"),
++        (np.r_[np.nan, np.zeros(299)], "NaN"),
++        (np.r_[np.inf, np.zeros(299)], "infinity"),
++    ],
++)
++def test_logistic_offset_validation(offset, msg):
++    X, y, _ = _offset_data()
++    with pytest.raises(ValueError, match=msg):
++        LogisticRegression().fit(X, y, offset=offset)
++
++
++@pytest.mark.parametrize("solver", ["liblinear", "sag", "saga"])
++def test_logistic_offset_unsupported_solver(solver):
++    X, y, offset = _offset_data()
++    with pytest.raises(ValueError, match="offset is only supported by the solvers"):
++        LogisticRegression(solver=solver).fit(X, y, offset=offset)
++
++
++def test_logistic_offset_multiclass_raises():
++    X, y, offset = _offset_data()
++    y = y + (X[:, 0] > 1)
++    with pytest.raises(ValueError, match="binary problems"):
++        LogisticRegression().fit(X, y, offset=offset)
++
++
++def test_logistic_offset_not_stored_clone_pickle():
++    X, y, offset = _offset_data()
++    lr = LogisticRegression().fit(X, y, offset=offset)
++    assert not any("offset" in name for name in vars(lr))
++    assert clone(lr).get_params() == lr.get_params()
++    lr2 = pickle.loads(pickle.dumps(lr))
++    assert_allclose(lr2.predict_proba(X, offset=offset), lr.predict_proba(X, offset=offset))
++
++
++def test_logistic_offset_metadata_routing():
++    """The offset is routed to fit and to predict_proba in a pipeline."""
++    from sklearn.pipeline import make_pipeline
++
++    X, y, offset = _offset_data()
++    with config_context(enable_metadata_routing=True):
++        lr = (
++            LogisticRegression(tol=1e-10)
++            .set_fit_request(offset=True)
++            .set_predict_proba_request(offset=True)
++        )
++        pipe = make_pipeline(StandardScaler(), lr).fit(X, y, offset=offset)
++        proba = pipe.predict_proba(X, offset=offset)
++    Xs = StandardScaler().fit_transform(X)
++    direct = LogisticRegression(tol=1e-10).fit(Xs, y, offset=offset)
++    assert_allclose(proba, direct.predict_proba(Xs, offset=offset), atol=1e-8)
++
++
++@pytest.mark.parametrize("solver", OFFSET_SOLVERS)
++def test_logistic_cv_offset_matches_manual_cv(solver):
++    """LogisticRegressionCV slices the offset per fold like sample_weight."""
++    X, y, offset = _offset_data(n_samples=400)
++    Cs = [0.01, 0.1, 1.0]
++    cv = StratifiedKFold(3)
++    lrcv = LogisticRegressionCV(
++        Cs=Cs, cv=cv, solver=solver, scoring="neg_log_loss", tol=1e-10, max_iter=1000,
++        use_legacy_attributes=False,
++    ).fit(X, y, offset=offset)
++    manual = np.zeros((3, len(Cs)))
++    for k, (train, test) in enumerate(cv.split(X, y)):
++        for j, C in enumerate(Cs):
++            lr = LogisticRegression(C=C, solver=solver, tol=1e-10, max_iter=1000)
++            lr.fit(X[train], y[train], offset=offset[train])
++            proba = lr.predict_proba(X[test], offset=offset[test])
++            manual[k, j] = -log_loss(y[test], proba)
++    assert lrcv.C_ == Cs[np.argmax(manual.mean(axis=0))]
++    lr = LogisticRegression(C=lrcv.C_, solver=solver, tol=1e-10, max_iter=1000)
++    lr.fit(X, y, offset=offset)
++    assert_allclose(lrcv.coef_, lr.coef_, atol=1e-5)
