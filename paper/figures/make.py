@@ -61,7 +61,7 @@ def fig1(R, out):
     rule = [("v_kappa_1se - a4_ref_feature_x100", "vs free column (CV C)", OI["blue"], "D"),
             ("v_kappa_1se - v_free_1se", "vs free column (same C rule)", OI["sky"], "v"),
             ("v_kappa_1se - a2_ref", "vs reference alone", OI["purple"], "P")]
-    fig, axs = plt.subplots(2, 2, figsize=(5.5, 4.4), constrained_layout=True)
+    fig, axs = plt.subplots(2, 2, figsize=(5.5, 5.0), constrained_layout=True)
     xl = "$\\Delta$ test log-loss (nats), ours $-$ arm"
     forest(axs[0, 0], R["higgs"], ["250", "500", "1000", "2000"], main,
            "(a) HIGGS: offset, $\\kappa$ by CV", xl)
@@ -72,8 +72,10 @@ def fig1(R, out):
     forest(axs[1, 1], R["higgs_smalln_1se_controls"], ["100", "150", "250", "1000"], rule,
            "(d) HIGGS: one-SE rule toward $\\kappa$ = 1", xl)
     h1, l1 = axs[0, 0].get_legend_handles_labels()
-    axs[0, 1].legend(h1, l1, loc="lower right", frameon=False)
-    axs[1, 1].legend(loc="lower right", frameon=False)
+    fig.legend(h1, l1, loc="outside upper center", ncol=2, frameon=False,
+               title="(a)-(c): offset with $\\kappa$ by CV minus")
+    axs[1, 1].legend(loc="upper center", bbox_to_anchor=(0.5, -0.3), ncol=1, frameon=False,
+                     title="(d): one-SE rule minus")
     fig.savefig(out / "fig1_paired.pdf")
     fig.savefig(out / "fig1_paired.png", dpi=200)
     plt.close(fig)

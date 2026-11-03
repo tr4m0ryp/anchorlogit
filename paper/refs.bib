@@ -1,0 +1,195 @@
+% Upstream library the change targets
+@article{pedregosa2011,
+  author  = {Pedregosa, Fabian and Varoquaux, Ga{\"e}l and Gramfort, Alexandre and Michel, Vincent and Thirion, Bertrand and Grisel, Olivier and Blondel, Mathieu and Prettenhofer, Peter and Weiss, Ron and Dubourg, Vincent and Vanderplas, Jake and Passos, Alexandre and Cournapeau, David and Brucher, Matthieu and Perrot, Matthieu and Duchesnay, {\'E}douard},
+  title   = {Scikit-learn: Machine Learning in {P}ython},
+  journal = {Journal of Machine Learning Research},
+  volume  = {12},
+  pages   = {2825--2830},
+  year    = {2011}
+}
+
+% The open feature request the patch closes
+@misc{sklearn24614,
+  author       = {{scikit-learn developers}},
+  title        = {{GLM} doesn't have an offset option (issue \#24614)},
+  howpublished = {\url{https://github.com/scikit-learn/scikit-learn/issues/24614}},
+  year         = {2022},
+  note         = {GitHub issue, opened October 2022, accessed 2026-11-03}
+}
+
+% Method: GLM offsets (exposure, known coefficients)
+@book{mccullagh1989,
+  author    = {McCullagh, Peter and Nelder, John A.},
+  title     = {Generalized Linear Models},
+  edition   = {2},
+  publisher = {Chapman and Hall},
+  address   = {London},
+  year      = {1989},
+  doi       = {10.1007/978-1-4899-3242-6}
+}
+
+% Reference implementations with an offset argument (twins)
+@article{friedman2010,
+  author  = {Friedman, Jerome and Hastie, Trevor and Tibshirani, Robert},
+  title   = {Regularization Paths for Generalized Linear Models via Coordinate Descent},
+  journal = {Journal of Statistical Software},
+  volume  = {33},
+  number  = {1},
+  pages   = {1--22},
+  year    = {2010},
+  doi     = {10.18637/jss.v033.i01}
+}
+
+@inproceedings{seabold2010,
+  author    = {Seabold, Skipper and Perktold, Josef},
+  title     = {Statsmodels: Econometric and Statistical Modeling with {P}ython},
+  booktitle = {Proceedings of the 9th Python in Science Conference},
+  pages     = {92--96},
+  year      = {2010},
+  doi       = {10.25080/Majora-92bf1922-011}
+}
+
+@misc{glum,
+  author       = {{QuantCo}},
+  title        = {glum: High performance {P}ython {GLM}s with all the features},
+  howpublished = {\url{https://github.com/Quantco/glum}},
+  year         = {2026},
+  note         = {Software, version 3.4.1}
+}
+
+% Ridge penalty
+@article{hoerl1970,
+  author  = {Hoerl, Arthur E. and Kennard, Robert W.},
+  title   = {Ridge Regression: Biased Estimation for Nonorthogonal Problems},
+  journal = {Technometrics},
+  volume  = {12},
+  number  = {1},
+  pages   = {55--67},
+  year    = {1970},
+  doi     = {10.1080/00401706.1970.10488634}
+}
+
+% Constant offset = prior correction for case-control sampling
+@article{king2001,
+  author  = {King, Gary and Zeng, Langche},
+  title   = {Logistic Regression in Rare Events Data},
+  journal = {Political Analysis},
+  volume  = {9},
+  number  = {2},
+  pages   = {137--163},
+  year    = {2001},
+  doi     = {10.1093/oxfordjournals.pan.a004868}
+}
+
+% Starting from a prior margin: boosting
+@article{friedman2001,
+  author  = {Friedman, Jerome H.},
+  title   = {Greedy Function Approximation: A Gradient Boosting Machine},
+  journal = {The Annals of Statistics},
+  volume  = {29},
+  number  = {5},
+  pages   = {1189--1232},
+  year    = {2001},
+  doi     = {10.1214/aos/1013203451}
+}
+
+@inproceedings{chen2016,
+  author    = {Chen, Tianqi and Guestrin, Carlos},
+  title     = {{XGBoost}: A Scalable Tree Boosting System},
+  booktitle = {Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining},
+  pages     = {785--794},
+  year      = {2016},
+  doi       = {10.1145/2939672.2939785}
+}
+
+@inproceedings{ke2017,
+  author    = {Ke, Guolin and Meng, Qi and Finley, Thomas and Wang, Taifeng and Chen, Wei and Ma, Weidong and Ye, Qiwei and Liu, Tie-Yan},
+  title     = {{LightGBM}: A Highly Efficient Gradient Boosting Decision Tree},
+  booktitle = {Advances in Neural Information Processing Systems},
+  volume    = {30},
+  pages     = {3146--3154},
+  year      = {2017}
+}
+
+% Recalibration baseline and calibration metric
+@incollection{platt1999,
+  author    = {Platt, John C.},
+  title     = {Probabilistic Outputs for Support Vector Machines and Comparisons to Regularized Likelihood Methods},
+  booktitle = {Advances in Large Margin Classifiers},
+  editor    = {Smola, Alexander J. and Bartlett, Peter and Sch{\"o}lkopf, Bernhard and Schuurmans, Dale},
+  publisher = {MIT Press},
+  pages     = {61--74},
+  year      = {1999}
+}
+
+@inproceedings{guo2017,
+  author    = {Guo, Chuan and Pleiss, Geoff and Sun, Yu and Weinberger, Kilian Q.},
+  title     = {On Calibration of Modern Neural Networks},
+  booktitle = {Proceedings of the 34th International Conference on Machine Learning},
+  series    = {Proceedings of Machine Learning Research},
+  volume    = {70},
+  pages     = {1321--1330},
+  year      = {2017}
+}
+
+% One-standard-error rule
+@book{hastie2009,
+  author    = {Hastie, Trevor and Tibshirani, Robert and Friedman, Jerome},
+  title     = {The Elements of Statistical Learning: Data Mining, Inference, and Prediction},
+  edition   = {2},
+  publisher = {Springer},
+  address   = {New York},
+  year      = {2009},
+  doi       = {10.1007/978-0-387-84858-7}
+}
+
+% Cross-fitting (out-of-fold nuisance predictions)
+@article{chernozhukov2018,
+  author  = {Chernozhukov, Victor and Chetverikov, Denis and Demirer, Mert and Duflo, Esther and Hansen, Christian and Newey, Whitney and Robins, James},
+  title   = {Double/Debiased Machine Learning for Treatment and Structural Parameters},
+  journal = {The Econometrics Journal},
+  volume  = {21},
+  number  = {1},
+  pages   = {C1--C68},
+  year    = {2018},
+  doi     = {10.1111/ectj.12097}
+}
+
+% Benchmark data
+@article{baldi2014,
+  author  = {Baldi, Pierre and Sadowski, Peter and Whiteson, Daniel},
+  title   = {Searching for Exotic Particles in High-Energy Physics with Deep Learning},
+  journal = {Nature Communications},
+  volume  = {5},
+  pages   = {4308},
+  year    = {2014},
+  doi     = {10.1038/ncomms5308}
+}
+
+@article{moro2014,
+  author  = {Moro, S{\'e}rgio and Cortez, Paulo and Rita, Paulo},
+  title   = {A Data-Driven Approach to Predict the Success of Bank Telemarketing},
+  journal = {Decision Support Systems},
+  volume  = {62},
+  pages   = {22--31},
+  year    = {2014},
+  doi     = {10.1016/j.dss.2014.03.001}
+}
+
+@techreport{harries1999,
+  author      = {Harries, Michael},
+  title       = {Splice-2 Comparative Evaluation: Electricity Pricing},
+  institution = {University of New South Wales, School of Computer Science and Engineering},
+  year        = {1999}
+}
+
+@article{vanschoren2014,
+  author  = {Vanschoren, Joaquin and van Rijn, Jan N. and Bischl, Bernd and Torgo, Luis},
+  title   = {{OpenML}: Networked Science in Machine Learning},
+  journal = {SIGKDD Explorations},
+  volume  = {15},
+  number  = {2},
+  pages   = {49--60},
+  year    = {2014},
+  doi     = {10.1145/2641190.2641198}
+}
