@@ -122,6 +122,8 @@ term must be built without the offset, or the offset counts twice per step. scik
 search builds that term with the same helper that would add the offset, so it stalls or falls back to lbfgs once an
 offset exists; `patches/scikit-learn-offset.patch` fixes it as part of an `offset=` patch for scikit-learn issue [#24614](https://github.com/scikit-learn/scikit-learn/issues/24614)
 (232 added and 19 removed library lines, 318 lines of tests, 61 new upstream tests pass on 1.9.1).
+The patch targets 1.9.1 and is not proposed upstream yet: the maintainers have not settled the `offset` API
+(#24614 is labelled "Needs Decision"), and it does not apply cleanly to current scikit-learn main.
 
 **API:** `OffsetLogisticRegression().fit(X, y, offset=o)` and `predict_proba(X, offset=o)` for a raw offset;
 `AnchoredLogisticRegression(anchor=..., kappa="cv", anchor_strength=np.inf)` where `anchor` is a column of `X`, a
