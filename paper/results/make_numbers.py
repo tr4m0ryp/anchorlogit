@@ -40,8 +40,8 @@ SIZE = {"100": "Hund", "150": "HundFifty", "250": "TwoFifty", "500": "FiveHund",
 ARM = {"a1_plain": "Plain", "a2_ref": "Ref", "a2_ref_platt": "Platt", "a3_ref_feature": "Feat",
        "a4_ref_feature_x100": "Free", "a5_offset_k1": "KOne", "a6_offset_kcv": "Kcv",
        "a7_anchored_cv": "Anch", "a8_kcv_no_source_cols": "NoSrc", "a9_local_crossfit": "LocCf",
-       "a9_local_insample": "LocIn", "a10_lgbm_init": "Gbm", "v_kappa_1se": "OneSe",
-       "v_k1_1se": "KOneSe", "v_free_1se": "FreeSe"}
+       "a9_local_insample": "LocIn", "a10_lgbm_init": "Gbm", "v_kappa_1se": "Rule",
+       "v_k1_1se": "KOneRule", "v_free_1se": "FreeRule"}
 METRIC = {"logloss": "LL", "brier": "Brier", "ece15": "ECE", "cal_slope": "Slope",
           "tail90_logloss": "TailLL"}
 
@@ -75,7 +75,8 @@ def one_file(o: Out, path: Path, D: str):
             o.m(f"n{D}{S}D{T}", sgn4(ll["mean"]))
             o.m(f"n{D}{S}D{T}Se", f4(ll["se"]))
             o.m(f"n{D}{S}D{T}SeW", f4(ll["se_within"]))
-            o.m(f"n{D}{S}D{T}P", f"{ll['p_two_sided']:.3f}")
+            pv = ll["p_two_sided"]
+            o.m(f"n{D}{S}D{T}P", "n/a" if pv != pv else f"{pv:.3f}")
             o.m(f"n{D}{S}D{T}Wins", f"{ll['wins']}/{ll['repeats']}")
             o.m(f"n{D}{S}D{T}Br", sgn4(br["mean"]))
             o.m(f"n{D}{S}D{T}BrSe", f4(br["se"]))
@@ -97,7 +98,7 @@ def one_file(o: Out, path: Path, D: str):
             if arm == "v_free_1se":
                 cs = [c["anchor_coef"] for c in picks]
                 o.c(f"{fn}: by_n_train.{n}.choices.v_free_1se[*].anchor_coef: median")
-                o.m(f"n{D}{S}FreeSeCoefMed", f"{statistics.median(cs):.2f}")
+                o.m(f"n{D}{S}FreeRuleCoefMed", f"{statistics.median(cs):.2f}")
     return d
 
 

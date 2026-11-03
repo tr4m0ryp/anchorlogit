@@ -112,7 +112,7 @@ def tests_and_patch(o: Out, patch: Path, logs: Path):
                 lib_add += 1
         elif line.startswith("-") and not line.startswith("---"):
             lib_del += 0 if "/tests/" in cur else 1
-    o.c(f"{patch.name}: added / removed lines outside tests, added test lines")
+    o.c(f"{patch.name}: added / removed diff lines (incl. blank) outside tests, added test lines")
     o.m("nPatchLibAdd", str(lib_add))
     o.m("nPatchLibDel", str(lib_del))
     o.m("nPatchTestAdd", str(test_add))
