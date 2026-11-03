@@ -26,6 +26,15 @@ p = model.predict_proba(X_new)[:, 1]
 print(model.kappa_, model.anchor_coef_)   # how much of the reference was kept
 ```
 
+`kappa="cv"` picks kappa at the given `C`. The benchmark picked kappa and `C` on one grid:
+
+```python
+import numpy as np
+from sklearn.model_selection import GridSearchCV
+grid = {"kappa": [0, 0.1, 0.25, 0.5, 0.75, 1], "C": np.logspace(-4, 1, 11)}
+model = GridSearchCV(AnchoredLogisticRegression(anchor=-1), grid, scoring="neg_log_loss", cv=5).fit(X, y)
+```
+
 <details>
 <summary>How the model works, in plain words</summary>
 
@@ -161,10 +170,13 @@ win needs $`|\bar d| > 2\,\mathrm{SE}`$ (bold).
 - **Against the penalised column (a3):** a win at small n (HIGGS 250 and 500, Bank 250 and 1,000), because the ridge
   shrinks the reference's weight; a tie once n >= 1,000 on HIGGS and on Elec2.
 - **Against the nearly free column (a4):** a tie. One win (HIGGS 1,000, -0.0019, SE 0.0006), no losses.
+- **Against the reference alone (a2):** the harder baseline at small n. On HIGGS the reference alone beats the
+  offset at n = 250 (+0.0034, SE 0.0013) and on the small-n draws at n = 100, 150 and 250 (+0.022, +0.013, +0.009),
+  ties at 500 and 1,000 and loses only at 2,000 (-0.0089, SE 0.0013). On Bank and Elec2 it ties.
 - **The fraction kappa:** it matters only where the reference is miscalibrated. On HIGGS CV picks kappa = 1 in 8 or 9
-  of 10 draws at every n; on Elec2 the median is 0.25 and a6 beats the full offset by 0.158 (SE 0.037) at n = 1,000. A Bank
-  reference trained only on younger clients gives median kappa 0.75 and beats kappa = 1 by 0.0077 (SE 0.0012), still
-  a tie with the free column.
+  of 10 draws at every n; on Elec2 at n = 1,000 the median is 0.25 and a6 beats the full offset by 0.158 (SE 0.037). A Bank
+  reference trained only on younger clients gives median kappa 0.75 and, at n = 1,000, beats kappa = 1 by 0.0077
+  (SE 0.0012), still a tie with the free column.
 
 **Ablations on HIGGS (a6 minus arm, SE; positive means the arm is better):**
 
@@ -182,14 +194,15 @@ win needs $`|\bar d| > 2\,\mathrm{SE}`$ (bold).
 | offset fit vs statsmodels GLM with offset | 12 | 8.3e-9 | 3.6e-8 |
 | offset fit vs glum with offset | 18 | 1.2e-8 | 4.4e-8 |
 | zero offset vs stock scikit-learn | 9 | 1.9e-8 | not stored |
-| Lemma 1: offset + column vs direct minimisation of J | 18 | 2.5e-10 | 3.3e-9 |
+| Lemma 1: offset + column vs direct minimisation of J | 18 | 2.5e-10 (on beta) | 3.3e-9 |
 
 **One-SE rule (post-hoc, the only kept variant):** among all $`(\kappa, C)`$ within one fold-SE of the best CV loss,
 take the largest $`\kappa`$, then the strongest ridge. On the draws it was chosen on it beat the free column under the
 same rule at n = 150 (-0.0064, SE 0.0030), not quite at n = 100 (-0.0082, SE 0.0044). On 5 fresh HIGGS draws the order
 flipped: a win at n = 100 (-0.0103, SE 0.0050) and a tie at n = 150 (-0.0021, SE 0.0016). It lost to the reference
-alone at every n <= 250, on both sets of draws, and it picks kappa = 1 in every draw, so it is the classical offset
-with a conservative ridge.
+alone at every n tested up to 250, on both sets of draws (fresh: n = 100 and 150), tied the pristine free column a4
+on the fresh draws, and on HIGGS it picks kappa = 1 in every draw, so it is the classical offset with a
+conservative ridge.
 
 ![Paired differences](docs/figures/fig1_paired.png)
 
@@ -203,9 +216,10 @@ within 0.005 of it in every main cell).*
 
 ## When to use it
 
-- **You have a reference probability for every row and a few hundred labels:** use `AnchoredLogisticRegression`
-  with `kappa="cv"`. You get the free-column result without having to know the scaling trick, an exact fit, and a
-  `kappa_` that tells you how much the reference was trusted.
+- **You have a reference probability for every row and a few hundred labels:** first check the reference alone;
+  on HIGGS it beat the offset fit at 250 rows and below. To correct it, use `AnchoredLogisticRegression` with kappa and `C`
+  tuned on one grid (above). You get the free-column result without having to know the scaling trick, an exact fit,
+  and a `kappa_` that tells you how much the reference was trusted.
 - **The reference was fitted on your training rows:** pass the unfitted classifier as `anchor` (or a
   `CrossFitReference`) so it is cross-fitted. Never use in-sample reference values.
 - **You need a classical offset in scikit-learn** (exposure, known coefficients, a prior correction):
@@ -215,6 +229,8 @@ within 0.005 of it in every main cell).*
 
 ## Limits
 
+- **The reference alone is hard to beat with few rows:** on HIGGS the offset fit lost to it at n <= 250 and beat
+  it only at n = 2,000.
 - **The headline is a tie** with the reference as a nearly free column (1 win in 8 cells, 1 under a two-stage
   bootstrap SE). Scaling one column up does about as well; the offset's value is exactness, one fewer coefficient and
   its shrinkage target, not lower loss.

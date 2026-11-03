@@ -17,14 +17,20 @@ within-test-set bootstrap SE (iid rows; Elec2: moving blocks of 48 rows). "Beats
   (a6 - a1 from -0.053 (0.004) at n = 250 to -0.028 (0.002) at n = 2000 on HIGGS;
   -0.088 (0.005) and -0.056 (0.004) on Bank) **and fails on Elec2** (+0.079 (0.047),
   +0.006 (0.010)). It shows that a reference helps, which is known.
+- **The reference alone is the harder baseline at small n.** On HIGGS it beats a6 at n = 250
+  (+0.0034, SE 0.0013) and on the small-n draws at n = 100, 150, 250 (+0.0222, +0.0131,
+  +0.0086), ties at 500 and 1000, and loses only at 2000 (-0.0089, SE 0.0013). Bank and Elec2: tie.
 - **kappa_cv < 1 beats kappa = 1 only where the reference is miscalibrated:** Elec2 (aged
   reference) -0.127 (0.035) at n = 250, -0.158 (0.037) at n = 1000; Bank with a shifted
-  reference -0.0077 (0.0012) at n = 1000. Platt recalibration of the reference alone and the
-  free column match it there; on HIGGS kappa_cv mostly picks 1.
+  reference -0.0077 (0.0012) at n = 1000. The free column and Platt recalibration of the reference
+  tie it there (on Elec2 Platt is far lower, 0.635 vs 1.218 at n = 250, inside 2 SE only by
+  the large SE); on HIGGS kappa_cv mostly picks 1.
 - **The one-SE rule toward the reference (variant 1) is the only kept improvement:** at
   n <= 250 it beats the pristine free column (HIGGS n = 100: -0.016, SE 0.004) and the free
   column under the same C rule at n = 150 (-0.0064, SE 0.0030; n = 100: -0.008, SE 0.0044, a tie).
-  On 5 fresh draws (`paper/results/confirm_1se.json`) it wins at n = 100 and ties at n = 150.
+  On 5 fresh draws (`paper/results/confirm_1se.json`) it wins at n = 100 and ties at n = 150
+  against the free column under the same rule, and ties the pristine free column at both
+  (-0.0090, SE 0.0045; -0.0121, SE 0.0068).
   It never beats the reference used alone at n <= 250 (n = 100: +0.010, SE 0.004).
 - **Leakage ablation:** a reference refit on the training rows and used in-sample is worse
   than the same reference cross-fitted by 0.06 to 0.53 log-loss in every cell (HIGGS
@@ -97,8 +103,9 @@ features can detect.
    (0.0030), vs ref +0.0043 (0.0019); n = 250: vs a4 -0.0071 (0.0027), vs free_1se -0.0022
    (0.0018), vs ref +0.0027 (0.0011); n = 1000: vs a4 +0.0016 (0.0009), vs ref +0.0001
    (0.0002). The rule picks kappa = 1 in nearly every draw, so it equals the kappa = 1 control
-   (d = 0.0000). **Kept** as a small-n setting (wins over the pristine free column at n <= 250 and over
-   the free column under the same C rule at n = 150 on held-out rows); it is the classical offset with a conservative ridge, not a fractional one.
+   (d = 0.0000). **Kept** as a small-n setting (on the selection draws: wins over the pristine free column at n <= 250 and over
+   the free column under the same C rule at n = 150; on fresh draws: a tie with the pristine
+   free column at n = 100 and 150, a win over the same-rule column at n = 100 only); it is the classical offset with a conservative ridge, not a fractional one.
 2. **Stronger reference that the features only re-express (`higgs_strongref`, reference on
    all 28 features).** Premises (a) + (b). Reference alone 0.5401; n = 100:
    a6 - a4 +0.0003 (0.0027), a6 - ref +0.0207 (0.0035); one-SE rule - a4 -0.0105 (0.0025),

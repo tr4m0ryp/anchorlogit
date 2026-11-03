@@ -21,6 +21,8 @@
 \input{results/extra}
 
 \newtheorem{lemma}{Lemma}
+\setlength{\textfloatsep}{10pt plus 2pt minus 2pt}
+\setlength{\intextsep}{8pt plus 2pt minus 2pt}
 \newcommand{\code}[1]{\texttt{#1}}
 \newcommand{\se}[1]{\,(#1)}
 
@@ -43,6 +45,7 @@ We add \code{offset=} to \code{fit} and every prediction method, fix the Newton 
 On three public datasets the offset does about as well as the reference entered as a nearly unpenalised feature: it is ahead beyond \nWinK{} SE in \nBeatKcvFree{} of \nMainCells{} cells (HIGGS, $n = \nSizeOneK$: \nHgOneKDKcvFree, SE \nHgOneKDKcvFreeSe) and behind in none.
 What it buys is exactness, one fewer fitted coefficient and a ridge that shrinks toward the reference instead of toward zero, not lower loss.
 Using the reference at all beats pristine \code{LogisticRegressionCV} without it on HIGGS (offset: \nHgTwoFiftyDKcvPlain, SE \nHgTwoFiftyDKcvPlainSe, at \nSizeTwoFifty{} rows) and Bank Marketing (\nBkTwoFiftyDKcvPlain, SE \nBkTwoFiftyDKcvPlainSe), but not on the drifting Elec2 stream; the free column gets the same gain.
+On HIGGS the reference alone beats the offset fit at \nSizeTwoFifty{} rows (\nHgTwoFiftyDKcvRef, SE \nHgTwoFiftyDKcvRefSe).
 A post-hoc one-SE rule toward $\kappa = 1$ beat the free column under the same rule on fresh draws at $n = \nSizeHund$ (\nCfHundDFreeRule, SE \nCfHundDFreeRuleSe), not at $n = \nSizeHundFifty$, and never beat the reference alone.
 SEs are between disjoint repeats of paired held-out differences.
 \end{abstract}
@@ -157,12 +160,12 @@ We fixed \nPreregChecks{} checks before the runs: a6 beats a1 on most of the \nD
 In the main runs (Table~\ref{tab:main}) the offset beats the model without the reference in \nBeatKcvPlain{} of \nMainCells{} cells, all on HIGGS and Bank.
 The free column a4 is within 0.002 of the offset in each of those cells, so this gap shows that the reference helps, not that the offset does.
 On HIGGS the gap falls from \nHgTwoFiftyDKcvPlain{} at $n = \nSizeTwoFifty$ to \nHgTwoKDKcvPlain{} at $n = \nSizeTwoK$, and on Bank it is \nBkTwoFiftyDKcvPlain{} at $n = \nSizeTwoFifty$.
+The reference alone (a2) is harder: on HIGGS it beats the offset at $n = \nSizeTwoFifty$ (\nHgTwoFiftyDKcvRef, SE \nHgTwoFiftyDKcvRefSe) and at $n = \nSizeHund$ to \nSizeTwoFifty{} on the small-$n$ draws, ties at \nSizeFiveHund{} and \nSizeOneK, and loses at \nSizeTwoK{} (\nHgTwoKDKcvRef, SE \nHgTwoKDKcvRefSe); on Bank and Elec2 it ties.
 
 The key comparison is the reference entered as a column.
 The penalised column a3 loses to the offset at small $n$ (HIGGS $n = \nSizeTwoFifty$: \nHgTwoFiftyDKcvFeat, SE \nHgTwoFiftyDKcvFeatSe; Bank: \nBkTwoFiftyDKcvFeat, SE \nBkTwoFiftyDKcvFeatSe), because the ridge shrinks its coefficient; the nearly free a4 does not.
 Against a4 the offset wins in \nBeatKcvFree{} of \nMainCells{} cells and loses in \nLoseKcvFree, and the anchored a7 also wins in \nBeatAnchFree.
 The single win is HIGGS at $n = \nSizeOneK$ (\nHgOneKDKcvFree, SE \nHgOneKDKcvFreeSe), and in that cell a3 ties the offset (\nHgOneKDKcvFeat, SE \nHgOneKDKcvFeatSe).
-We therefore call the offset a tie with the free column.
 
 \begin{table}[h]
 \centering\small
@@ -192,7 +195,7 @@ On Elec2 the aged reference gets a median $\kappa$ of \nElOneKKcvKappaMed{} at $
 
 \begin{figure}[h]
 \centering
-\includegraphics[width=0.85\linewidth]{figures/fig1_paired.pdf}
+\includegraphics[width=0.71\linewidth]{figures/fig1_paired.pdf}
 \caption{The offset beats no reference on HIGGS and Bank and the penalised column at small $n$, and sits on zero against the free column. Paired test log-loss difference with \nCIPct\% intervals from the between-repeat SE; (c) has a symmetric log axis; (d) uses the draws the rule was selected on (fresh draws in Table~\ref{tab:onese}).}
 \label{fig:paired}
 \end{figure}
@@ -207,26 +210,24 @@ S = \{(\kappa, C) : \mathrm{CV}(\kappa, C) \le \mathrm{CV}_{\min} + \mathrm{SE}_
 \label{eq:onese}
 \end{equation}
 where the arg max is lexicographic (compare $\kappa$ first, then $C$) and $\mathrm{SE}_{\min}$ is the fold SE at the CV minimum.
-To keep the comparison fair, the free column gets the same $C$ rule as a control.
-Figure~\ref{fig:paired}(d) shows the result and Table~\ref{tab:onese} in Appendix~\ref{app:checks} lists it.
+To keep the comparison fair, the free column gets the same $C$ rule as a control (Figure~\ref{fig:paired}(d), Table~\ref{tab:onese}).
 
 
 On the draws it was chosen on, the rule beats the free column under its own $C$ rule at $n = \nSizeHundFifty$ (\nHcHundFiftyDRuleFreeRule, SE \nHcHundFiftyDRuleFreeRuleSe), and at $n = \nSizeHund$ it is just inside \nWinK{} SE (\nHcHundDRuleFreeRule, SE \nHcHundDRuleFreeRuleSe).
-Because it was chosen after seeing those numbers, we reran it on \nCfRepeats{} fresh HIGGS draws whose rows none of the variant runs used.
+Chosen after seeing those numbers, it was rerun on \nCfRepeats{} fresh HIGGS draws that no variant run used.
 There the order flips: a win at $n = \nSizeHund$ (\nCfHundDFreeRule, SE \nCfHundDFreeRuleSe) and a tie at $n = \nSizeHundFifty$ (\nCfHundFiftyDFreeRule, SE \nCfHundFiftyDFreeRuleSe).
-It loses to the reference alone at every $n \le \nSizeTwoFifty$, on the fresh draws too.
-Because it selects $\kappa = 1$ in every draw, this rule amounts to the classical offset with a conservative ridge, not a fractional one.
+It loses to the reference alone at every $n \le \nSizeTwoFifty$ tested, on the fresh draws ($n = \nSizeHund$ and \nSizeHundFifty) too.
+It selects $\kappa = 1$ in every draw: the classical offset with a conservative ridge.
 
 A reference built from all \nHgAllCols{} HIGGS columns, which the features only re-express, gave a tie with the free column (\nSrHundDKcvFree, SE \nSrHundDKcvFreeSe, $n = \nSizeHund$) and a loss to the reference alone.
 A Bank reference trained only on younger clients, wrong in a group the features can see, is where the fraction pays: $\kappa_{\mathrm{cv}}$ has median \nBsOneKKcvKappaMed{} and beats $\kappa = 1$ by \nBsOneKDKcvKOne{} (SE \nBsOneKDKcvKOneSe) at $n = \nSizeOneK$.
 It still ties the free column (\nBsOneKDKcvFree, SE \nBsOneKDKcvFreeSe) and the Platt-recalibrated reference.
 
-Appendix~\ref{app:checks} gives the ablations and equivalence checks.
-In Figure~\ref{fig:rel} the expected calibration error (ECE, mean gap between predicted and observed frequency) of the offset and the free column are close.
+In Figure~\ref{fig:rel} the expected calibration error (ECE, mean gap between predicted and observed frequency) of the offset and the free column are close; Appendix~\ref{app:checks} has the ablations and checks.
 
 \begin{figure}[h]
 \centering
-\includegraphics[width=2.8in]{figures/fig2_reliability.pdf}
+\includegraphics[width=2.2in]{figures/fig2_reliability.pdf}
 \caption{The offset is about as well calibrated as the free column. Reliability on pooled test rows, \nEceBins{} equal-mass bins; legend ECE is the mean over repeats.}
 \label{fig:rel}
 \end{figure}
@@ -236,14 +237,13 @@ In Figure~\ref{fig:rel} the expected calibration error (ECE, mean gap between pr
 \section{Limits}
 \label{sec:limits}
 
+On HIGGS the offset fit loses to the reference alone at $n \le \nSizeTwoFifty$ and beats it only at \nSizeTwoK: with few rows, check the reference alone first.
 The headline is a tie: the offset beats the nearly free column in \nBeatKcvFree{} of \nMainCells{} cells (\nBeatKcvFreeBoot{} under a two-stage bootstrap SE that resamples repeats, then test rows), so scaling one column up does about as well; the offset's value is exactness, one fewer coefficient and its shrinkage target, not lower loss.
 
-On Elec2 the offset does not beat the model without the reference (\nElTwoFiftyDKcvPlain, SE \nElTwoFiftyDKcvPlainSe); the Platt-recalibrated reference reaches \nElTwoFiftyPlattLL{} against its \nElTwoFiftyKcvLL{} at $n = \nSizeTwoFifty$ (\nElTwoFiftyDKcvPlatt, SE \nElTwoFiftyDKcvPlattSe, a tie only by the large SE), so $\kappa < 1$ is a coarse fix for a reference wrong in slope and level.
-
-Of the \nPreregChecks{} pre-registered checks, the win over a1 held on two of three datasets as required (not on Elec2); a6 beat a3 on Bank and on HIGGS at $n \le \nSizeFiveHund$, tied it elsewhere, and tied a4; $\kappa_{\mathrm{cv}} < 1$ held on Elec2, and ACS Income, its other dataset, was not run.
-The \nPostHocVariants{} variants were post-hoc; the kept one held on fresh draws at one of two sizes, by about \nWinK{} SE.
-ACS Income, $n > \nSizeTwoK$ and more repeats were cut for budget: the evidence is three datasets with gradient-boosting references and $n \le \nSizeTwoK$, and the Elec2 windows share an expanding reference history, so their SE is optimistic.
-Binary only: we claim nothing for the Poisson, Gamma and Tweedie regressors beyond the patch's tests.
+On Elec2 the offset does not beat a1 (\nElTwoFiftyDKcvPlain, SE \nElTwoFiftyDKcvPlainSe), and the Platt-recalibrated reference reaches \nElTwoFiftyPlattLL{} against its \nElTwoFiftyKcvLL{} at $n = \nSizeTwoFifty$ (a tie only by the large SE \nElTwoFiftyDKcvPlattSe): $\kappa < 1$ is a coarse fix for a reference wrong in slope and level.
+Of the \nPreregChecks{} pre-registered checks, the win over a1 held on two of three datasets as required (not Elec2); a6 beat a3 on Bank and on HIGGS at $n \le \nSizeFiveHund$, tied it elsewhere, and tied a4; $\kappa_{\mathrm{cv}} < 1$ held on Elec2 (ACS Income not run).
+The evidence is three datasets, gradient-boosting references and $n \le \nSizeTwoK$ (larger $n$ and more repeats were cut for budget); Elec2 windows share a reference history, so their SE is optimistic.
+Binary only: the Poisson, Gamma and Tweedie regressors have only the patch's tests.
 
 \bibliographystyle{plainnat}
 \bibliography{refs}
@@ -331,7 +331,7 @@ Check & cases & coefficients & log-odds $\eta$ \\
 patched fit vs statsmodels GLM with offset & \nTwinSmCases & \nTwinSmCoef & \nTwinSmEta \\
 patched fit vs glum with offset & \nTwinGlumCases & \nTwinGlumCoef & \nTwinGlumEta \\
 zero offset vs stock scikit-learn & \nTwinUpCases & \nTwinUpCoef & not stored \\
-Lemma~\ref{lem:anchored}: offset + column vs direct minimisation of $J$ & \nTwinLemTwoCases & \nTwinLemTwoCoef & \nTwinLemTwoEta \\
+Lemma~\ref{lem:anchored}: offset + column vs direct minimisation of $J$ (coefficient: $\beta$) & \nTwinLemTwoCases & \nTwinLemTwoCoef & \nTwinLemTwoEta \\
 \bottomrule
 \end{tabular}
 \end{table}
