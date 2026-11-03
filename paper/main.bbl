@@ -1,0 +1,114 @@
+\begin{thebibliography}{14}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Baldi et~al.(2014)Baldi, Sadowski, and Whiteson]{baldi2014}
+Pierre Baldi, Peter Sadowski, and Daniel Whiteson.
+\newblock Searching for exotic particles in high-energy physics with deep
+  learning.
+\newblock \emph{Nature Communications}, 5:\penalty0 4308, 2014.
+\newblock \doi{10.1038/ncomms5308}.
+
+\bibitem[Chernozhukov et~al.(2018)Chernozhukov, Chetverikov, Demirer, Duflo,
+  Hansen, Newey, and Robins]{chernozhukov2018}
+Victor Chernozhukov, Denis Chetverikov, Mert Demirer, Esther Duflo, Christian
+  Hansen, Whitney Newey, and James Robins.
+\newblock Double/debiased machine learning for treatment and structural
+  parameters.
+\newblock \emph{The Econometrics Journal}, 21\penalty0 (1):\penalty0 C1--C68,
+  2018.
+\newblock \doi{10.1111/ectj.12097}.
+
+\bibitem[Friedman et~al.(2010)Friedman, Hastie, and Tibshirani]{friedman2010}
+Jerome Friedman, Trevor Hastie, and Robert Tibshirani.
+\newblock Regularization paths for generalized linear models via coordinate
+  descent.
+\newblock \emph{Journal of Statistical Software}, 33\penalty0 (1):\penalty0
+  1--22, 2010.
+\newblock \doi{10.18637/jss.v033.i01}.
+
+\bibitem[Harries(1999)]{harries1999}
+Michael Harries.
+\newblock Splice-2 comparative evaluation: Electricity pricing.
+\newblock Technical report, University of New South Wales, School of Computer
+  Science and Engineering, 1999.
+
+\bibitem[Hastie et~al.(2009)Hastie, Tibshirani, and Friedman]{hastie2009}
+Trevor Hastie, Robert Tibshirani, and Jerome Friedman.
+\newblock \emph{The Elements of Statistical Learning: Data Mining, Inference,
+  and Prediction}.
+\newblock Springer, New York, 2 edition, 2009.
+\newblock \doi{10.1007/978-0-387-84858-7}.
+
+\bibitem[Ke et~al.(2017)Ke, Meng, Finley, Wang, Chen, Ma, Ye, and Liu]{ke2017}
+Guolin Ke, Qi~Meng, Thomas Finley, Taifeng Wang, Wei Chen, Weidong Ma, Qiwei
+  Ye, and Tie-Yan Liu.
+\newblock {LightGBM}: A highly efficient gradient boosting decision tree.
+\newblock In \emph{Advances in Neural Information Processing Systems},
+  volume~30, pages 3146--3154, 2017.
+\newblock URL
+  \url{https://papers.nips.cc/paper_files/paper/2017/hash/6449f44a102fde848669bdd9eb6b76fa-Abstract.html}.
+
+\bibitem[McCullagh and Nelder(1989)]{mccullagh1989}
+Peter McCullagh and John~A. Nelder.
+\newblock \emph{Generalized Linear Models}.
+\newblock Chapman and Hall, London, 2 edition, 1989.
+\newblock \doi{10.1007/978-1-4899-3242-6}.
+
+\bibitem[Moro et~al.(2014)Moro, Cortez, and Rita]{moro2014}
+S{\'e}rgio Moro, Paulo Cortez, and Paulo Rita.
+\newblock A data-driven approach to predict the success of bank telemarketing.
+\newblock \emph{Decision Support Systems}, 62:\penalty0 22--31, 2014.
+\newblock \doi{10.1016/j.dss.2014.03.001}.
+
+\bibitem[Pedregosa et~al.(2011)Pedregosa, Varoquaux, Gramfort, Michel, Thirion,
+  Grisel, Blondel, Prettenhofer, Weiss, Dubourg, Vanderplas, Passos,
+  Cournapeau, Brucher, Perrot, and Duchesnay]{pedregosa2011}
+Fabian Pedregosa, Ga{\"e}l Varoquaux, Alexandre Gramfort, Vincent Michel,
+  Bertrand Thirion, Olivier Grisel, Mathieu Blondel, Peter Prettenhofer, Ron
+  Weiss, Vincent Dubourg, Jake Vanderplas, Alexandre Passos, David Cournapeau,
+  Matthieu Brucher, Matthieu Perrot, and {\'E}douard Duchesnay.
+\newblock Scikit-learn: Machine learning in {P}ython.
+\newblock \emph{Journal of Machine Learning Research}, 12:\penalty0 2825--2830,
+  2011.
+\newblock URL \url{https://jmlr.org/papers/v12/pedregosa11a.html}.
+
+\bibitem[Platt(1999)]{platt1999}
+John~C. Platt.
+\newblock Probabilistic outputs for support vector machines and comparisons to
+  regularized likelihood methods.
+\newblock In Alexander~J. Smola, Peter Bartlett, Bernhard Sch{\"o}lkopf, and
+  Dale Schuurmans, editors, \emph{Advances in Large Margin Classifiers}, pages
+  61--74. MIT Press, 1999.
+
+\bibitem[{QuantCo}(2026)]{glum}
+{QuantCo}.
+\newblock glum: High performance {P}ython {GLM}s with all the features.
+\newblock \url{https://github.com/Quantco/glum}, 2026.
+\newblock Software, version 3.4.1.
+
+\bibitem[{scikit-learn developers}(2022)]{sklearn24614}
+{scikit-learn developers}.
+\newblock {GLM} doesn't have an offset option (issue \#24614).
+\newblock \url{https://github.com/scikit-learn/scikit-learn/issues/24614},
+  2022.
+\newblock GitHub issue, opened October 2022, accessed 2026-11-03.
+
+\bibitem[Seabold and Perktold(2010)]{seabold2010}
+Skipper Seabold and Josef Perktold.
+\newblock Statsmodels: Econometric and statistical modeling with {P}ython.
+\newblock In \emph{Proceedings of the 9th Python in Science Conference}, pages
+  92--96, 2010.
+\newblock \doi{10.25080/Majora-92bf1922-011}.
+
+\bibitem[Vanschoren et~al.(2014)Vanschoren, van Rijn, Bischl, and
+  Torgo]{vanschoren2014}
+Joaquin Vanschoren, Jan~N. van Rijn, Bernd Bischl, and Luis Torgo.
+\newblock {OpenML}: Networked science in machine learning.
+\newblock \emph{SIGKDD Explorations}, 15\penalty0 (2):\penalty0 49--60, 2014.
+\newblock \doi{10.1145/2641190.2641198}.
+
+\end{thebibliography}

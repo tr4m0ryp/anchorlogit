@@ -73,7 +73,7 @@ def recomputed(o: Out, rc, res, DATA, SIZE, tag_pair):
                 if key in beat_boot and n in MAIN_CELLS.get(name, ()):
                     beat_boot[key] += p["mean"] < -2 * p["se_boot2"]
     o.c("recompute.json vs bench JSON: max |difference| in mean and between-repeat SE (float32 rows)")
-    o.m("nRecomputeMaxDiff", f"{worst:.1e}")
+    o.m("nRecomputeMaxDiff", _sci(worst))
     o.c("recompute.json: main cells where ours - a4 < -2 SeBoot")
     o.m("nBeatKcvFreeBoot", str(beat_boot["a6_offset_kcv - a4_ref_feature_x100"]))
     o.m("nBeatAnchFreeBoot", str(beat_boot["a7_anchored_cv - a4_ref_feature_x100"]))

@@ -28,7 +28,7 @@ REPO = HERE.parents[1]
 OI = {"black": "#000000", "orange": "#E69F00", "sky": "#56B4E9", "green": "#009E73",
       "blue": "#0072B2", "verm": "#D55E00", "purple": "#CC79A7"}
 plt.rcParams.update({"font.size": 8, "axes.titlesize": 8, "axes.labelsize": 8,
-                     "legend.fontsize": 6.5, "xtick.labelsize": 7, "ytick.labelsize": 7,
+                     "legend.fontsize": 7, "xtick.labelsize": 7, "ytick.labelsize": 7,
                      "pdf.fonttype": 42, "axes.spines.top": False, "axes.spines.right": False})
 
 
@@ -55,13 +55,13 @@ def forest(ax, res, cells, comps, title, xlabel):
 
 def fig1(R, out):
     main = [("a6_offset_kcv - a1_plain", "vs no reference", OI["verm"], "o"),
-            ("a6_offset_kcv - a3_ref_feature", "vs reference as std. feature", OI["orange"], "s"),
-            ("a6_offset_kcv - a4_ref_feature_x100", "vs reference as free column", OI["blue"], "D"),
+            ("a6_offset_kcv - a3_ref_feature", "vs std. feature", OI["orange"], "s"),
+            ("a6_offset_kcv - a4_ref_feature_x100", "vs free column", OI["blue"], "D"),
             ("a6_offset_kcv - a5_offset_k1", "vs full offset ($\\kappa$ = 1)", OI["green"], "^")]
     rule = [("v_kappa_1se - a4_ref_feature_x100", "vs free column (CV C)", OI["blue"], "D"),
             ("v_kappa_1se - v_free_1se", "vs free column (same C rule)", OI["sky"], "v"),
             ("v_kappa_1se - a2_ref", "vs reference alone", OI["purple"], "P")]
-    fig, axs = plt.subplots(2, 2, figsize=(5.5, 5.0), constrained_layout=True)
+    fig, axs = plt.subplots(2, 2, figsize=(5.5, 3.25), constrained_layout=True)
     xl = "$\\Delta$ test log-loss (nats), ours $-$ arm"
     forest(axs[0, 0], R["higgs"], ["250", "500", "1000", "2000"], main,
            "(a) HIGGS: offset, $\\kappa$ by CV", xl)
@@ -72,10 +72,11 @@ def fig1(R, out):
     forest(axs[1, 1], R["higgs_smalln_1se_controls"], ["100", "150", "250", "1000"], rule,
            "(d) HIGGS: one-SE rule toward $\\kappa$ = 1", xl)
     h1, l1 = axs[0, 0].get_legend_handles_labels()
-    fig.legend(h1, l1, loc="outside upper center", ncol=2, frameon=False,
-               title="(a)-(c): offset with $\\kappa$ by CV minus")
-    axs[1, 1].legend(loc="upper center", bbox_to_anchor=(0.5, -0.3), ncol=1, frameon=False,
-                     title="(d): one-SE rule minus")
+    fig.legend(h1, l1, loc="outside upper center", ncol=4, frameon=False, columnspacing=1.0,
+               handletextpad=0.3, title="(a)-(c): offset with $\\kappa$ by CV minus")
+    h2, l2 = axs[1, 1].get_legend_handles_labels()
+    fig.legend(h2, l2, loc="outside lower center", ncol=3, frameon=False, columnspacing=1.0,
+               handletextpad=0.3, title="(d): one-SE rule minus")
     fig.savefig(out / "fig1_paired.pdf")
     fig.savefig(out / "fig1_paired.png", dpi=200)
     plt.close(fig)
@@ -97,32 +98,33 @@ def reliability(ax, y, probs, ece, arms, title):
         bins = np.array_split(order, 15)
         px = [p[b].mean() for b in bins]
         py = [y[b].mean() for b in bins]
-        ax.plot(px, py, marker=mk, ms=3, lw=1, color=col, label=f"{label}, ECE {ece[a]:.3f}")
+        ax.plot(px, py, marker=mk, ms=3, lw=1, color=col, label=f"{label}: {ece[a]:.3f}")
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
     ax.set_aspect("equal")
     ax.set_xlabel("predicted probability (bin mean)")
     ax.set_ylabel("observed frequency")
     ax.set_title(title)
-    ax.legend(loc="upper left", frameon=False)
+    ax.legend(loc="lower right", frameon=False, fontsize=6.5, handlelength=1.5, title="ECE",
+              title_fontsize=6.5, borderaxespad=0.2)
 
 
 def fig2(R, raw, out):
-    fig, axs = plt.subplots(1, 2, figsize=(5.5, 2.9), constrained_layout=True)
-    arms = {"a1_plain": ("no reference", OI["verm"], "o"),
-            "a3_ref_feature": ("ref. as std. feature", OI["orange"], "s"),
-            "a4_ref_feature_x100": ("ref. as free column", OI["blue"], "D"),
-            "a6_offset_kcv": ("offset, $\\kappa$ by CV", OI["black"], "x")}
+    fig, axs = plt.subplots(1, 2, figsize=(4.4, 2.3), constrained_layout=True)
+    arms = {"a1_plain": ("no ref.", OI["verm"], "o"),
+            "a3_ref_feature": ("std. feature", OI["orange"], "s"),
+            "a4_ref_feature_x100": ("free column", OI["blue"], "D"),
+            "a6_offset_kcv": ("$\\kappa$ by CV", OI["black"], "x")}
     y, pr = load_raw(raw / "higgs_test_logodds.npz", 250, arms)
     ece = {a: R["higgs"]["by_n_train"]["250"]["arms"][a]["ece15"] for a in arms}
     reliability(axs[0], y, pr, ece, arms, "(a) HIGGS, n = 250")
-    arms = {"a2_ref": ("reference alone", OI["purple"], "P"),
-            "a5_offset_k1": ("full offset, $\\kappa$ = 1", OI["green"], "^"),
-            "a4_ref_feature_x100": ("ref. as free column", OI["blue"], "D"),
-            "a6_offset_kcv": ("offset, $\\kappa$ by CV", OI["black"], "x")}
+    arms = {"a2_ref": ("ref. alone", OI["purple"], "P"),
+            "a5_offset_k1": ("$\\kappa$ = 1", OI["green"], "^"),
+            "a4_ref_feature_x100": ("free column", OI["blue"], "D"),
+            "a6_offset_kcv": ("$\\kappa$ by CV", OI["black"], "x")}
     y, pr = load_raw(raw / "bank_shiftref_test_logodds.npz", 1000, arms)
     ece = {a: R["bank_shiftref"]["by_n_train"]["1000"]["arms"][a]["ece15"] for a in arms}
-    reliability(axs[1], y, pr, ece, arms, "(b) Bank, shifted reference, n = 1,000")
+    reliability(axs[1], y, pr, ece, arms, "(b) Bank, shifted ref., n = 1,000")
     fig.savefig(out / "fig2_reliability.pdf")
     fig.savefig(out / "fig2_reliability.png", dpi=200)
     plt.close(fig)
