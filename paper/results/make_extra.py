@@ -88,6 +88,17 @@ def main():
     o.c("paper/figures/make.py: ci95() uses the t quantile at 0.975")
     o.m("nCIPct", "95")
 
+    o.c("bench/common/arms.py: scale of the nearly free reference column (a4)")
+    arms_src = (repo / "bench" / "common" / "arms.py").read_text()
+    o.m("nFreeScale", str(int(float(re.search(r'\("a4_ref_feature_x100", ([0-9.]+)\)', arms_src).group(1)))))
+
+    o.c("git: last commit touching the package, the benchmarks and the patch (results were produced from it)")
+    sha = subprocess.run(["git", "-C", str(repo), "log", "-1", "--format=%h", "--", "anchorlogit",
+                          "bench", "patches"], capture_output=True, text=True, check=True).stdout.strip()
+    o.m("nCommit", sha)
+
+    confirm(o, HERE / "confirm_1se.json")
+
     o.c("bench/results/PRIVATE_LINE.txt: the only sentence about the private application (verbatim)")
     o.m("privateLine", latex_escape((res / "PRIVATE_LINE.txt").read_text().strip()))
 
