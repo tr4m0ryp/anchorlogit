@@ -44,6 +44,22 @@ def latex_escape(s: str) -> str:
     return s
 
 
+def confirm(o: Out, path: Path) -> None:
+    """Macros from confirm_1se.json (the fresh-draw confirmation of the one-SE rule)."""
+    o.c(f"paper/results/confirm_1se.json (from confirm_1se.py): paired log-loss, rule minus arm")
+    d = json.loads(path.read_text())
+    o.m("nCfRepeats", str(len(d["repeats"])))
+    arms = {"FreeRule": "v_free_1se", "Free": "a4_ref_feature_x100", "Ref": "a2_ref",
+            "KOneRule": "v_k1_1se", "Plain": "a1_plain"}
+    for n, rec in d["by_n_train"].items():
+        for tag, arm in arms.items():
+            p = rec["paired"][f"v_kappa_1se - {arm}"]["logloss"]
+            o.m(f"nCf{SIZE[n]}D{tag}", sgn4(p["mean"]))
+            o.m(f"nCf{SIZE[n]}D{tag}Se", f4(p["se"]))
+        ks = [c["kappa"] for c in rec["choices"]["v_kappa_1se"]]
+        o.m(f"nCf{SIZE[n]}KappaOnes", f"{sum(k == 1 for k in ks)}/{len(ks)}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--repo", default=str(REPO))
