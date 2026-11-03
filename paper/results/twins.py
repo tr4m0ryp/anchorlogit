@@ -8,7 +8,7 @@ generator, re-implemented here so the paper does not import the test suite):
   glum GeneralizedLinearRegressor(offset=) ridge at three C values (alpha = 1 / (C * sum w))
   pristine scikit-learn LogisticRegression offset = 0 (anchorlogit must equal upstream)
   Lemma 2 identity: anchored penalty 0.5*lam*(b_z - kappa)^2 == offset kappa*z + column z/sqrt(lam)
-Writes the max absolute difference in coefficients and in the log-odds per check.
+Writes the max absolute difference in coefficients and in the raw score x@w+b+offset per check.
 """
 from __future__ import annotations
 
