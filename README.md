@@ -7,10 +7,12 @@
   <a href="paper/anchorlogit.pdf"><img alt="Paper PDF" src="https://img.shields.io/badge/Paper-PDF-b31b1b?logo=adobeacrobatreader&logoColor=white"></a>
 </p>
 
-Fitting only the correction on top of a probability you already have cut test log-loss by **0.053 nats (SE 0.004)
-on HIGGS and 0.088 (SE 0.005) on Bank Marketing at 250 training rows**, never lost to the reference entered as a
-nearly free column in 8 benchmark cells, and gives scikit-learn's `LogisticRegression` the per-sample `offset=` it
-lacks, exact to **1.2e-8** against statsmodels and glum.
+Gives scikit-learn's `LogisticRegression` the per-sample `offset=` it lacks, **exact to 1.2e-8** against statsmodels
+and glum, with a fix for the Newton line search, and uses it to fit only the correction on top of a probability you
+already have. On loss it **ties the obvious alternative**, the reference entered as a nearly free column: ahead
+beyond 2 SE in 1 of 8 benchmark cells, behind in none. What the offset buys is an exact fit, one fewer fitted
+coefficient and a ridge that shrinks towards the reference instead of towards zero. The large gains (-0.053 nats on
+HIGGS, -0.088 on Bank at 250 rows) are against a model without the reference, and the free column gets them too.
 
 ```bash
 pip install git+https://github.com/tr4m0ryp/anchorlogit
@@ -44,6 +46,8 @@ features, the model stays at the reference.
 Why not just add the reference as one more feature? You can, but ridge regularisation (a penalty that pulls weights
 towards zero to fight overfitting on small data) also pulls the weight on the reference towards zero. On 250 rows
 that throws away part of your best input. The offset avoids that, because its weight is not a parameter at all.
+Multiplying the column by 100 so the penalty barely touches its weight avoids it too, and in our benchmarks did
+about as well; the offset does it exactly and with one fewer coefficient.
 
 Sometimes the reference is too confident or slightly off. So the package uses a **fraction** `kappa` of the
 reference's log-odds as the offset, picked by cross-validation from 0, 0.1, 0.25, 0.5, 0.75 and 1. `kappa = 1` is the
@@ -54,9 +58,10 @@ One rule matters more than any setting: the reference for a training row must no
 fit the reference on the same rows, the package **cross-fits** it: each row's reference comes from a fit on the other
 folds. Skipping that leaks the labels and made log-loss worse by 0.06 to 0.53 nats in our runs.
 
-What we found: starting from the reference beats ignoring it by a lot on small samples, which is expected. Against the
-honest rival, the reference entered as a feature whose weight is left almost free, it ties. The offset never lost
-that comparison and its fit is exact, so it is a safe default, not a free gain.
+What we found: starting from the reference beats ignoring it by a lot on small samples on HIGGS and Bank (not on the
+drifting Elec2 stream), which is expected. Against the honest rival, the reference entered as a feature whose weight
+is left almost free, it ties. The offset never lost that comparison and its fit is exact, so it is a safe default,
+not a free gain.
 
 ```mermaid
 flowchart LR
@@ -104,9 +109,9 @@ with weight $`u`$, mapped back by $`\beta = \kappa + u / \sqrt{\lambda}`$ (Lemma
 
 The package ships two solvers on the same loss: L-BFGS-B (dense or sparse) and a damped Newton step with Armijo
 backtracking. In the Newton line search the trial log-odds are $`\eta(w + t d) = \eta(w) + t\, X d`$; the direction
-term must be built without the offset, or the offset counts twice per step. The same bug sits in scikit-learn's
-`newton-cholesky` line search once an offset exists, and `patches/scikit-learn-offset.patch` fixes it as part of an
-`offset=` patch for scikit-learn issue [#24614](https://github.com/scikit-learn/scikit-learn/issues/24614)
+term must be built without the offset, or the offset counts twice per step. scikit-learn's `newton-cholesky` line
+search builds that term with the same helper that would add the offset, so it stalls or falls back to lbfgs once an
+offset exists; `patches/scikit-learn-offset.patch` fixes it as part of an `offset=` patch for scikit-learn issue [#24614](https://github.com/scikit-learn/scikit-learn/issues/24614)
 (232 added and 19 removed library lines, 318 lines of tests, 61 new upstream tests pass on 1.9.1).
 
 **API:** `OffsetLogisticRegression().fit(X, y, offset=o)` and `predict_proba(X, offset=o)` for a raw offset;
@@ -151,12 +156,13 @@ win needs $`|\bar d| > 2\,\mathrm{SE}`$ (bold).
 
 **What the table says:**
 - **Against no reference (a1):** a win in 6 of 8 cells, from -0.053 at n = 250 to -0.028 at n = 2,000 on HIGGS; it
-  fails on Elec2, where the aged reference is confidently wrong in a few drift weeks.
-- **Against the penalised column (a3):** a win at small n (HIGGS 250, Bank 250 and 1,000), because the ridge shrinks
-  the reference's weight; a tie once n >= 1,000 on HIGGS.
+  fails on Elec2, where the aged reference is confidently wrong in a few drift weeks. The free column a4 is within
+  0.002 of the offset in every one of those cells, so this shows the reference helps, not the offset.
+- **Against the penalised column (a3):** a win at small n (HIGGS 250 and 500, Bank 250 and 1,000), because the ridge
+  shrinks the reference's weight; a tie once n >= 1,000 on HIGGS and on Elec2.
 - **Against the nearly free column (a4):** a tie. One win (HIGGS 1,000, -0.0019, SE 0.0006), no losses.
-- **The fraction kappa:** it matters only where the reference is miscalibrated. On HIGGS CV picks kappa = 1 in 8 of
-  10 draws; on Elec2 the median is 0.25 and a6 beats the full offset by 0.158 (SE 0.037) at n = 1,000. A Bank
+- **The fraction kappa:** it matters only where the reference is miscalibrated. On HIGGS CV picks kappa = 1 in 8 or 9
+  of 10 draws at every n; on Elec2 the median is 0.25 and a6 beats the full offset by 0.158 (SE 0.037) at n = 1,000. A Bank
   reference trained only on younger clients gives median kappa 0.75 and beats kappa = 1 by 0.0077 (SE 0.0012), still
   a tie with the free column.
 
@@ -179,9 +185,11 @@ win needs $`|\bar d| > 2\,\mathrm{SE}`$ (bold).
 | Lemma 1: offset + column vs direct minimisation of J | 18 | 2.5e-10 | 3.3e-9 |
 
 **One-SE rule (post-hoc, the only kept variant):** among all $`(\kappa, C)`$ within one fold-SE of the best CV loss,
-take the largest $`\kappa`$, then the strongest ridge. On 5 fresh HIGGS draws it beat the free column under the same
-rule at n = 100 (-0.0103, SE 0.0050) and tied at n = 150 (-0.0021, SE 0.0016); it lost to the reference alone at every
-n <= 250, and it picks kappa = 1 in every draw.
+take the largest $`\kappa`$, then the strongest ridge. On the draws it was chosen on it beat the free column under the
+same rule at n = 150 (-0.0064, SE 0.0030), not quite at n = 100 (-0.0082, SE 0.0044). On 5 fresh HIGGS draws the order
+flipped: a win at n = 100 (-0.0103, SE 0.0050) and a tie at n = 150 (-0.0021, SE 0.0016). It lost to the reference
+alone at every n <= 250, on both sets of draws, and it picks kappa = 1 in every draw, so it is the classical offset
+with a conservative ridge.
 
 ![Paired differences](docs/figures/fig1_paired.png)
 
@@ -190,7 +198,8 @@ symmetric log axis.*
 
 ![Reliability](docs/figures/fig2_reliability.png)
 
-*Reliability on pooled test rows, 15 equal-mass bins: the offset is as well calibrated as the free column.*
+*Reliability on pooled test rows, 15 equal-mass bins: the offset is about as well calibrated as the free column (ECE
+within 0.005 of it in every main cell).*
 
 ## When to use it
 
@@ -201,19 +210,22 @@ symmetric log axis.*
   `CrossFitReference`) so it is cross-fitted. Never use in-sample reference values.
 - **You need a classical offset in scikit-learn** (exposure, known coefficients, a prior correction):
   `OffsetLogisticRegression(...).fit(X, y, offset=o)`.
-- **You have thousands of rows:** a nonlinear residual (LightGBM started at `kappa * r`) beats every linear arm on
-  HIGGS from n = 500 on.
+- **You have more than a few hundred rows:** a nonlinear residual (LightGBM started at `kappa * r`) beat every linear
+  arm on HIGGS from n = 500 on (tested on HIGGS only).
 
 ## Limits
 
 - **The headline is a tie** with the reference as a nearly free column (1 win in 8 cells, 1 under a two-stage
-  bootstrap SE). Scaling one column up gets most of the gain.
+  bootstrap SE). Scaling one column up does about as well; the offset's value is exactness, one fewer coefficient and
+  its shrinkage target, not lower loss.
 - **No win over the no-reference model on Elec2** (+0.079, SE 0.047 at n = 250). A Platt-recalibrated reference does
   far better there (0.635 against our 1.218 at n = 250, a tie only by the large SE), so `kappa < 1` is a coarse fix for a
   reference wrong in slope and level.
 - **The one-SE rule is post-hoc** and held on fresh draws at one of two sizes, by about 2 SE: weak evidence.
 - **Binary only.** The scikit-learn patch also adds `offset=` to the Poisson, Gamma and Tweedie regressors; we claim
   nothing for them beyond the patch's tests.
+- **Narrow evidence:** three datasets, all with gradient-boosting references, n <= 2,000, 8 to 12 repeats. The Elec2
+  windows share an expanding reference history, so their SE is optimistic.
 - **Cut for budget:** ACS Income, n > 2,000 and 30 repeats. Every cut and attempt is listed in
   [`bench/results/SCOPE.md`](bench/results/SCOPE.md).
 
@@ -245,6 +257,7 @@ python examples/quickstart.py                  # one-minute synthetic demo
 ```bibtex
 @misc{ouallaf2026anchorlogit,
   author       = {Ouallaf, Moussa},
+  organization = {Husimi.ai},
   title        = {A per-sample offset for scikit-learn logistic regression},
   year         = {2026},
   howpublished = {\url{https://github.com/tr4m0ryp/anchorlogit}},
@@ -266,4 +279,4 @@ OSI open-source license.
   ([`patches/LICENSE-scikit-learn`](patches/LICENSE-scikit-learn)), Copyright (c) 2007-2026 The scikit-learn
   developers. The package itself contains no code derived from scikit-learn; it only imports it.
 
-Copyright (c) 2026 Keygraph, Inc. Commercial licensing enquiries: see [`NOTICE`](./NOTICE).
+Copyright (c) 2026 Keygraph, Inc. Commercial licensing enquiries: moussa@husimi.ai (see [`NOTICE`](./NOTICE)).

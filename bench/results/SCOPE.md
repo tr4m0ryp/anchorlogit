@@ -23,7 +23,8 @@ within-test-set bootstrap SE (iid rows; Elec2: moving blocks of 48 rows). "Beats
   free column match it there; on HIGGS kappa_cv mostly picks 1.
 - **The one-SE rule toward the reference (variant 1) is the only kept improvement:** at
   n <= 250 it beats the pristine free column (HIGGS n = 100: -0.016, SE 0.004) and the free
-  column under the same C rule (n = 100: -0.008, SE 0.0044; n = 150: -0.0064, SE 0.0030).
+  column under the same C rule at n = 150 (-0.0064, SE 0.0030; n = 100: -0.008, SE 0.0044, a tie).
+  On 5 fresh draws (`paper/results/confirm_1se.json`) it wins at n = 100 and ties at n = 150.
   It never beats the reference used alone at n <= 250 (n = 100: +0.010, SE 0.004).
 - **Leakage ablation:** a reference refit on the training rows and used in-sample is worse
   than the same reference cross-fitted by 0.06 to 0.53 log-loss in every cell (HIGGS
@@ -87,8 +88,8 @@ features can detect.
 
 
 1. **Smaller n + a stronger prior on kappa (`higgs_smalln_1se`, `_controls`).** Premise: the
-   CV minimum over kappa is noisy at small n (kappa_cv lost to kappa = 1 at n = 100: +0.0044,
-   SE 0.0023). Rule: among configurations within one fold-SE of the CV best, take the largest
+   CV minimum over kappa is noisy at small n (kappa_cv worse than kappa = 1 at n = 100: +0.0044,
+   SE 0.0023, just inside 2 SE). Rule: among configurations within one fold-SE of the CV best, take the largest
    kappa, then the strongest ridge. Controls with the same C rule: kappa = 1 and the free
    column. Result (d = rule - arm):
    n = 100: vs a4 -0.0160 (0.0041), vs free_1se -0.0082 (0.0044), vs a6 -0.0118 (0.0031),
@@ -96,8 +97,8 @@ features can detect.
    (0.0030), vs ref +0.0043 (0.0019); n = 250: vs a4 -0.0071 (0.0027), vs free_1se -0.0022
    (0.0018), vs ref +0.0027 (0.0011); n = 1000: vs a4 +0.0016 (0.0009), vs ref +0.0001
    (0.0002). The rule picks kappa = 1 in nearly every draw, so it equals the kappa = 1 control
-   (d = 0.0000). **Kept** as a small-n setting (wins over the free column at n <= 150 on
-   held-out rows); it is the classical offset with a conservative ridge, not a fractional one.
+   (d = 0.0000). **Kept** as a small-n setting (wins over the pristine free column at n <= 250 and over
+   the free column under the same C rule at n = 150 on held-out rows); it is the classical offset with a conservative ridge, not a fractional one.
 2. **Stronger reference that the features only re-express (`higgs_strongref`, reference on
    all 28 features).** Premises (a) + (b). Reference alone 0.5401; n = 100:
    a6 - a4 +0.0003 (0.0027), a6 - ref +0.0207 (0.0035); one-SE rule - a4 -0.0105 (0.0025),
@@ -118,5 +119,6 @@ covers); ACS (cut above, never tested).
 
 - a6 beats a1 at every n with the 90 % CI excluding 0 on >= 2 of 3 datasets: **met** (HIGGS,
   Bank; Elec2 fails).
-- a6 or a7 vs a3: **tie at n >= 1000, win at n <= 500** (a3 is penalised); vs a4: tie.
+- a6 or a7 vs a3: **win on Bank (both n) and on HIGGS at n <= 500, tie on HIGGS at n >= 1000
+  and on Elec2** (a3 is penalised); vs a4: tie.
 - kappa_cv < 1 on ACS and Elec2: Elec2 **met** (median 0.25); ACS not run.

@@ -28,8 +28,8 @@
 
 \author{%
   Moussa Ouallaf \\
-  Informatics Institute \\
-  University of Amsterdam \\
+  Husimi.ai \\
+  \texttt{moussa@husimi.ai} \\
 }
 
 \begin{document}
@@ -39,11 +39,12 @@
 % section: abstract
 \begin{abstract}
 scikit-learn's \code{LogisticRegression} cannot take a per-sample offset (a fixed term added to each example's log-odds), so a known reference probability can only enter as a feature.
-We add \code{offset=} to \code{fit} and every prediction method, and a package that uses a cross-validated fraction $\kappa$ of the reference's log-odds as the offset.
-Against pristine scikit-learn \nVerSklearn{} \code{LogisticRegressionCV} without the reference, test log-loss changes by \nHgTwoFiftyDKcvPlain{} (SE \nHgTwoFiftyDKcvPlainSe) on HIGGS and \nBkTwoFiftyDKcvPlain{} (SE \nBkTwoFiftyDKcvPlainSe) on Bank Marketing at \nSizeTwoFifty{} training rows, but not on the drifting Elec2 stream.
-Against the reference as a nearly unpenalised feature it ties, winning beyond \nWinK{} SE in \nBeatKcvFree{} of \nMainCells{} cells (HIGGS, $n = \nSizeOneK$: \nHgOneKDKcvFree, SE \nHgOneKDKcvFreeSe).
-The one kept variant, a one-SE rule toward $\kappa = 1$, beat that feature under the same rule on fresh draws at $n = \nSizeHund$ (\nCfHundDFreeRule, SE \nCfHundDFreeRuleSe), not at $n = \nSizeHundFifty$, and never beat the reference alone.
-SEs are between disjoint repeats of paired held-out differences; fits match statsmodels and glum to \nTwinGlumCoef.
+We add \code{offset=} to \code{fit} and every prediction method, fix the Newton line search that would count the offset twice, and ship a package that uses a cross-validated fraction $\kappa$ of the reference's log-odds as the offset; the fit matches statsmodels and glum to \nTwinGlumCoef{} in the coefficients.
+On three public datasets the offset does about as well as the reference entered as a nearly unpenalised feature: it is ahead beyond \nWinK{} SE in \nBeatKcvFree{} of \nMainCells{} cells (HIGGS, $n = \nSizeOneK$: \nHgOneKDKcvFree, SE \nHgOneKDKcvFreeSe) and behind in none.
+What it buys is exactness, one fewer fitted coefficient and a ridge that shrinks toward the reference instead of toward zero, not lower loss.
+Using the reference at all beats pristine \code{LogisticRegressionCV} without it on HIGGS (offset: \nHgTwoFiftyDKcvPlain, SE \nHgTwoFiftyDKcvPlainSe, at \nSizeTwoFifty{} rows) and Bank Marketing (\nBkTwoFiftyDKcvPlain, SE \nBkTwoFiftyDKcvPlainSe), but not on the drifting Elec2 stream; the free column gets the same gain.
+A post-hoc one-SE rule toward $\kappa = 1$ beat the free column under the same rule on fresh draws at $n = \nSizeHund$ (\nCfHundDFreeRule, SE \nCfHundDFreeRuleSe), not at $n = \nSizeHundFifty$, and never beat the reference alone.
+SEs are between disjoint repeats of paired held-out differences.
 \end{abstract}
 
 % section: 1
@@ -77,7 +78,7 @@ The model and its objective are
 where $\eta_i$ is the log-odds of example $i$, $o_i$ its given (not fitted) offset, $s_i$ its sample weight, $C$ the inverse ridge strength and $\ell(y,\eta) = \log(1+e^{\eta}) - y\eta$ the log-loss.
 The offset is data: it is never stored, and $o = \code{None}$ gives the current behaviour bit for bit.
 Our library diff is \nPatchLibAdd{} added and \nPatchLibDel{} removed lines, with \nPatchTestAdd{} lines of tests.
-One removed line fixes a bug the offset exposed: the Newton line search evaluates $\eta(w + t\,d) = \eta(w) + t\,X d$, but built $X d$ with the helper that adds $o$, so the offset counted twice per step and newton-cholesky stalled.
+One removed line fixes a bug the offset exposed: the Newton line search evaluates $\eta(w + t\,d) = \eta(w) + t\,X d$, but built $X d$ with the helper that adds $o$, so the offset counted twice per step and newton-cholesky stalled or fell back to lbfgs.
 
 Our package \code{anchorlogit} builds the offset from a reference probability $p_i$, with $r_i = \operatorname{logit}(p_i)$:
 \begin{equation}
@@ -153,7 +154,8 @@ We fixed \nPreregChecks{} checks before the runs: a6 beats a1 on most of the \nD
 \section{Results}
 \label{sec:results}
 
-In the main runs (Table~\ref{tab:main}) the offset beats the model without the reference in \nBeatKcvPlain{} of \nMainCells{} cells.
+In the main runs (Table~\ref{tab:main}) the offset beats the model without the reference in \nBeatKcvPlain{} of \nMainCells{} cells, all on HIGGS and Bank.
+The free column a4 is within 0.002 of the offset in each of those cells, so this gap shows that the reference helps, not that the offset does.
 On HIGGS the gap falls from \nHgTwoFiftyDKcvPlain{} at $n = \nSizeTwoFifty$ to \nHgTwoKDKcvPlain{} at $n = \nSizeTwoK$, and on Bank it is \nBkTwoFiftyDKcvPlain{} at $n = \nSizeTwoFifty$.
 
 The key comparison is the reference entered as a column.
@@ -190,13 +192,13 @@ On Elec2 the aged reference gets a median $\kappa$ of \nElOneKKcvKappaMed{} at $
 
 \begin{figure}[h]
 \centering
-\includegraphics[width=0.9\linewidth]{figures/fig1_paired.pdf}
-\caption{The offset beats no reference and the penalised column, and sits on zero against the free column. Paired test log-loss difference with \nCIPct\% intervals from the between-repeat SE; (c) has a symmetric log axis.}
+\includegraphics[width=0.85\linewidth]{figures/fig1_paired.pdf}
+\caption{The offset beats no reference on HIGGS and Bank and the penalised column at small $n$, and sits on zero against the free column. Paired test log-loss difference with \nCIPct\% intervals from the between-repeat SE; (c) has a symmetric log axis; (d) uses the draws the rule was selected on (fresh draws in Table~\ref{tab:onese}).}
 \label{fig:paired}
 \end{figure}
 
 To find what would make the offset win, we tried \nPostHocVariants{} post-hoc variants and kept only the first.
-At $n = \nSizeHund$ the CV minimum over $\kappa$ was noisy, and $\kappa_{\mathrm{cv}}$ lost to $\kappa = 1$ (\nHsHundDKcvKOne, SE \nHsHundDKcvKOneSe).
+At $n = \nSizeHund$ the CV minimum over $\kappa$ was noisy, and $\kappa_{\mathrm{cv}}$ was worse than $\kappa = 1$ by \nHsHundDKcvKOne{} (SE \nHsHundDKcvKOneSe), just inside \nWinK{} SE.
 The one-SE rule~\citep{hastie2009} takes, among all $(\kappa, C)$ within one fold-SE of the best cross-validated loss, the largest $\kappa$ and then the strongest ridge:
 \begin{equation}
 (\hat\kappa, \hat C) = \operatorname*{arg\,max}_{(\kappa, C) \in S}\, (\kappa, -C),
@@ -220,12 +222,12 @@ A Bank reference trained only on younger clients, wrong in a group the features 
 It still ties the free column (\nBsOneKDKcvFree, SE \nBsOneKDKcvFreeSe) and the Platt-recalibrated reference.
 
 Appendix~\ref{app:checks} gives the ablations and equivalence checks.
-Calibration tells the same story: in Figure~\ref{fig:rel} the expected calibration error (ECE, mean gap between predicted and observed frequency) of the offset and of the free column are close.
+In Figure~\ref{fig:rel} the expected calibration error (ECE, mean gap between predicted and observed frequency) of the offset and the free column are close.
 
 \begin{figure}[h]
 \centering
-\includegraphics[width=3.5in]{figures/fig2_reliability.pdf}
-\caption{The offset is as well calibrated as the free column. Reliability on pooled test rows, \nEceBins{} equal-mass bins; legend ECE is the mean over repeats.}
+\includegraphics[width=2.8in]{figures/fig2_reliability.pdf}
+\caption{The offset is about as well calibrated as the free column. Reliability on pooled test rows, \nEceBins{} equal-mass bins; legend ECE is the mean over repeats.}
 \label{fig:rel}
 \end{figure}
 
@@ -234,15 +236,14 @@ Calibration tells the same story: in Figure~\ref{fig:rel} the expected calibrati
 \section{Limits}
 \label{sec:limits}
 
-The headline is a tie: the offset beats the nearly free column in \nBeatKcvFree{} of \nMainCells{} cells (\nBeatKcvFreeBoot{} under a two-stage bootstrap SE that resamples repeats, then test rows), so scaling one column gets most of the gain.
+The headline is a tie: the offset beats the nearly free column in \nBeatKcvFree{} of \nMainCells{} cells (\nBeatKcvFreeBoot{} under a two-stage bootstrap SE that resamples repeats, then test rows), so scaling one column up does about as well; the offset's value is exactness, one fewer coefficient and its shrinkage target, not lower loss.
 
 On Elec2 the offset does not beat the model without the reference (\nElTwoFiftyDKcvPlain, SE \nElTwoFiftyDKcvPlainSe); the Platt-recalibrated reference reaches \nElTwoFiftyPlattLL{} against its \nElTwoFiftyKcvLL{} at $n = \nSizeTwoFifty$ (\nElTwoFiftyDKcvPlatt, SE \nElTwoFiftyDKcvPlattSe, a tie only by the large SE), so $\kappa < 1$ is a coarse fix for a reference wrong in slope and level.
 
-We ran \nMainArms{} main arms and \nVariantArms{} variant arms over \nResultFiles{} result files.
-Of the \nPreregChecks{} pre-registered checks only the win over a1 on Elec2 failed, and a6 tied a3 at $n \ge \nSizeOneK$.
-The \nPostHocVariants{} variants were post-hoc, and the kept one held on fresh draws at one of two sizes, by about \nWinK{} SE: weak evidence at best.
-ACS Income, $n > \nSizeTwoK$ and more repeats were cut for budget.
-The method is binary only; we claim nothing for the Poisson, Gamma and Tweedie regressors beyond the patch's tests.
+Of the \nPreregChecks{} pre-registered checks, the win over a1 held on two of three datasets as required (not on Elec2); a6 beat a3 on Bank and on HIGGS at $n \le \nSizeFiveHund$, tied it elsewhere, and tied a4; $\kappa_{\mathrm{cv}} < 1$ held on Elec2, and ACS Income, its other dataset, was not run.
+The \nPostHocVariants{} variants were post-hoc; the kept one held on fresh draws at one of two sizes, by about \nWinK{} SE.
+ACS Income, $n > \nSizeTwoK$ and more repeats were cut for budget: the evidence is three datasets with gradient-boosting references and $n \le \nSizeTwoK$, and the Elec2 windows share an expanding reference history, so their SE is optimistic.
+Binary only: we claim nothing for the Poisson, Gamma and Tweedie regressors beyond the patch's tests.
 
 \bibliographystyle{plainnat}
 \bibliography{refs}
