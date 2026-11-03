@@ -1,8 +1,10 @@
 """Public datasets for the benchmark, cached outside the repository."""
 
 import os
+from pathlib import Path
 
-DATA_HOME = os.environ.get("ANCHORLOGIT_DATA", "../_data/openml")
+DATA_HOME = os.environ.get("ANCHORLOGIT_DATA",
+                           str(Path(__file__).resolve().parents[3] / "_data" / "openml"))
 
 
 def fetch(data_id):

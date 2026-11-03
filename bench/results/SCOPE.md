@@ -31,9 +31,9 @@ within-test-set bootstrap SE (iid rows; Elec2: moving blocks of 48 rows). "Beats
 - **Nonlinear residual:** LightGBM started at kappa x reference (a10) beats every linear arm
   on HIGGS for n >= 500 (a6 - a10 = +0.039, SE 0.003 at n = 1000).
 
-## Cuts (spec plan -> what ran) and why
+## Cuts (benchmark plan -> what ran) and why
 
-| item | spec | ran | reason |
+| item | plan | ran | reason |
 |---|---|---|---|
 | datasets | HIGGS, ACS Income, Elec2 (+ Bank null) | HIGGS, Elec2, Bank | ACS needs `folktables` and the census download (not in the shared env, several GB); budget |
 | n_train | 250, 500, 1000, 2000, 5000 | HIGGS 250-2000; Elec2, Bank 250, 1000; variants 100-1000 | 5000 cannot give 10 disjoint repeats from the 38k HIGGS rows left after the reference; budget |
@@ -78,7 +78,13 @@ nearly unpenalised) does not have that problem and ties. Elec2 log-losses above 
 a few drift weeks where every arm, including the reference, is confidently wrong (window 0
 alone: plain ridge 1.43); the between-window SE reflects this.
 
-## Variants (spec section 6: what would have to be true), all on held-out test rows
+## Variants (what would have to be true), all on held-out test rows
+
+Premises for the offset to win: (a) the reference is stronger than any model on the features
+alone, (b) the features hold noisy re-expressions of the reference, (c) n is small enough that
+a free coefficient on the reference is noisy, (d) the reference is wrong in a subgroup the
+features can detect.
+
 
 1. **Smaller n + a stronger prior on kappa (`higgs_smalln_1se`, `_controls`).** Premise: the
    CV minimum over kappa is noisy at small n (kappa_cv lost to kappa = 1 at n = 100: +0.0044,
@@ -93,7 +99,7 @@ alone: plain ridge 1.43); the between-window SE reflects this.
    (d = 0.0000). **Kept** as a small-n setting (wins over the free column at n <= 150 on
    held-out rows); it is the classical offset with a conservative ridge, not a fractional one.
 2. **Stronger reference that the features only re-express (`higgs_strongref`, reference on
-   all 28 features).** Premise (a) + (b) of section 6. Reference alone 0.5401; n = 100:
+   all 28 features).** Premises (a) + (b). Reference alone 0.5401; n = 100:
    a6 - a4 +0.0003 (0.0027), a6 - ref +0.0207 (0.0035); one-SE rule - a4 -0.0105 (0.0025),
    - ref +0.0099 (0.0041); n = 1000: every reference arm within 0.0003 of the reference.
    **Tie** with the free column for kappa_cv; nothing beats the reference alone.

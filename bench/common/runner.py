@@ -13,7 +13,7 @@ from .metrics import boot_se, paired, row_losses, summary
 
 RESULTS = Path(__file__).resolve().parents[1] / "results"
 RAW = Path(os.environ.get("ANCHORLOGIT_BENCH_RAW",
-                          "../_data/anchorlogit_bench"))
+                          Path(__file__).resolve().parents[3] / "_data" / "anchorlogit_bench"))
 OURS = ("a6_offset_kcv", "a7_anchored_cv", "v_kappa_1se", "v_k1_1se", "v_free_1se")
 
 
