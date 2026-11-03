@@ -10,13 +10,14 @@ import argparse
 import ast
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
 sys.path.insert(0, str(HERE))
-from numfmt import Out, intc  # noqa: E402
+from numfmt import Out, f4, intc, sgn4  # noqa: E402
 
 SIZE = {"100": "Hund", "150": "HundFifty", "250": "TwoFifty", "500": "FiveHund", "1000": "OneK",
         "2000": "TwoK"}
