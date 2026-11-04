@@ -285,16 +285,5 @@ python examples/quickstart.py                  # one-minute synthetic demo
 
 ## License
 
-anchorlogit is **source-available**, licensed under the [PolyForm Noncommercial License 1.0.0](./LICENSE), **not** an
-OSI open-source license.
-
-- **You may** use, modify, fork, and share anchorlogit freely for any **noncommercial** purpose, as long as you keep
-  the copyright and `Required Notice:` lines (see [`NOTICE`](./NOTICE)) and credit *"anchorlogit by Keygraph, Inc."*
-- **You may not** sell it, bundle it into a paid product, or run it as a paid/hosted service **without a commercial
-  license**.
-- **Exception:** [`patches/scikit-learn-offset.patch`](patches/scikit-learn-offset.patch) changes scikit-learn and
-  contains its source lines, so it stays under scikit-learn's **BSD 3-Clause License**
-  ([`patches/LICENSE-scikit-learn`](patches/LICENSE-scikit-learn)), Copyright (c) 2007-2026 The scikit-learn
-  developers. The package itself contains no code derived from scikit-learn; it only imports it.
-
-Copyright (c) 2026 Keygraph, Inc. Commercial licensing enquiries: moussa@husimi.ai (see [`NOTICE`](./NOTICE)).
+Apache License 2.0: free to use, modify and redistribute, including commercially. See [LICENSE](LICENSE)
+and [NOTICE](NOTICE). `patches/scikit-learn-offset.patch` changes scikit-learn and stays under scikit-learn's BSD 3-Clause license ([`patches/LICENSE-scikit-learn`](patches/LICENSE-scikit-learn)). Copyright 2026 Moussa Ouallaf, Husimi.ai (moussa@husimi.ai).
