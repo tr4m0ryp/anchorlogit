@@ -95,7 +95,7 @@ For row $`i`$ with features $`x_i`$, label $`y_i \in \{0, 1\}`$, sample weight $
 \ell(y, \eta) = \log(1 + e^{\eta}) - y\eta
 ```
 
-With a reference probability $`p_i`$ and $`r_i = \operatorname{logit}(p_i)`$ (clipped to $`[10^{-3}, 1 - 10^{-3}]`$),
+With a reference probability $`p_i`$ and $`r_i = \mathrm{logit}(p_i)`$ (clipped to $`[10^{-3}, 1 - 10^{-3}]`$),
 the offset is a fraction of the reference:
 
 ```math
@@ -146,7 +146,7 @@ rows is
 
 ```math
 d_j = \frac{1}{|T_j|}\sum_{i \in T_j} \bigl[\ell(y_i, \eta^{\mathrm{ours}}_i) - \ell(y_i, \eta^{a}_i)\bigr],
-\qquad \bar d = \frac{1}{R}\sum_j d_j, \qquad \mathrm{SE} = \frac{\operatorname{sd}(d_1, \dots, d_R)}{\sqrt{R}}
+\qquad \bar d = \frac{1}{R}\sum_j d_j, \qquad \mathrm{SE} = \frac{\mathrm{sd}(d_1, \dots, d_R)}{\sqrt{R}}
 ```
 
 over disjoint repeats (HIGGS 10, Bank 8, Elec2 12), so the SE includes the training draw. Negative favours ours; a
