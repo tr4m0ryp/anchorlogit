@@ -37,6 +37,8 @@
 \begin{document}
 
 \maketitle
+\vspace{-1.5em}
+\begin{center}\small Technical note (preprint, not peer-reviewed)\end{center}
 
 % section: abstract
 \begin{abstract}
@@ -244,6 +246,11 @@ On Elec2 the offset does not beat a1 (\nElTwoFiftyDKcvPlain, SE \nElTwoFiftyDKcv
 Of the \nPreregChecks{} pre-registered checks, the win over a1 held on two of three datasets as required (not Elec2); a6 beat a3 on Bank and on HIGGS at $n \le \nSizeFiveHund$, tied it elsewhere, and tied a4; $\kappa_{\mathrm{cv}} < 1$ held on Elec2 (ACS Income not run).
 The evidence is three datasets, gradient-boosting references and $n \le \nSizeTwoK$ (larger $n$ and more repeats were cut for budget); Elec2 windows share a reference history, so their SE is optimistic.
 Binary only: the Poisson, Gamma and Tweedie regressors have only the patch's tests.
+
+\section*{Generative AI acknowledgement}
+Generative AI is becoming part of how research is designed, carried out and written up. Readers should know where it was used, so we state it plainly. Generative AI was used throughout this project: to write and review code, to run and check the experiments, and to draft and revise this note. We used only Anthropic's Claude models. Every result reported here comes from code in the accompanying repository and can be reproduced from it.
+
+Statements like this one are still free text, and no two papers word them alike. We are developing a general checklist for reporting generative AI use, in the spirit of the CRediT taxonomy~\citep{brand2015}, which lists each author's contribution through a fixed set of roles. It will cover the ways AI enters a project, from coding assistance and brainstorming to fully autonomous execution, so that researchers can state their use in a short, comparable form. Once published, the checklist will be added to this section.
 
 \bibliographystyle{plainnat}
 \bibliography{refs}

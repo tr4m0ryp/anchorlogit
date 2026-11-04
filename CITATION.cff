@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-message: "If you use anchorlogit, please cite the paper in paper/anchorlogit.pdf."
+message: "If you use anchorlogit, please cite the technical note in paper/anchorlogit.pdf."
 title: "anchorlogit"
 version: 0.1.0
 date-released: 2026-11-04
@@ -11,7 +11,7 @@ authors:
     affiliation: Husimi.ai
     email: moussa@husimi.ai
 preferred-citation:
-  type: article
+  type: report
   title: "A per-sample offset for scikit-learn logistic regression"
   authors:
     - family-names: Ouallaf
@@ -19,4 +19,6 @@ preferred-citation:
       affiliation: Husimi.ai
       email: moussa@husimi.ai
   year: 2026
+  institution:
+    name: Husimi.ai
   url: "https://github.com/tr4m0ryp/anchorlogit/blob/main/paper/anchorlogit.pdf"

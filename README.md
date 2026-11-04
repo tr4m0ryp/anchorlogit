@@ -4,7 +4,7 @@
   <a href="https://x.com/tr4m0ryp"><img alt="Follow on X" src="https://img.shields.io/badge/X-@tr4m0ryp-000000?logo=x&logoColor=white"></a>
 </p>
 <p align="center">
-  <a href="paper/anchorlogit.pdf"><img alt="Paper PDF" src="https://img.shields.io/badge/Paper-PDF-b31b1b?logo=adobeacrobatreader&logoColor=white"></a>
+  <a href="paper/anchorlogit.pdf"><img alt="Technical note PDF" src="https://img.shields.io/badge/Technical%20note-PDF-b31b1b?logo=adobeacrobatreader&logoColor=white"></a>
 </p>
 
 Gives scikit-learn's `LogisticRegression` the per-sample `offset=` it lacks, **exact to 1.2e-8** against statsmodels
@@ -114,7 +114,7 @@ J(w, b, \beta) = C \sum_i s_i\, \ell\bigl(y_i,\; x_i^\top w + b + \beta r_i\bigr
 $`\lambda = \infty`$ is the fixed offset, $`\lambda = 0`$ the reference as a free column. For $`0 < \lambda < \infty`$
 the minimiser of $`J`$ is the offset fit with $`o_i = \kappa r_i`$ plus one extra ridge column $`r_i / \sqrt{\lambda}`$
 with weight $`u`$, mapped back by $`\beta = \kappa + u / \sqrt{\lambda}`$ (Lemma 1, proof in the
-[paper](paper/anchorlogit.pdf), Appendix A). So `offset=` is all a solver needs.
+[technical note](paper/anchorlogit.pdf), Appendix A). So `offset=` is all a solver needs.
 
 The package ships two solvers on the same loss: L-BFGS-B (dense or sparse) and a damped Newton step with Armijo
 backtracking. In the Newton line search the trial log-odds are $`\eta(w + t d) = \eta(w) + t\, X d`$; the direction
@@ -265,7 +265,7 @@ python -m bench.summarize                      # every table
 OMP_NUM_THREADS=2 python paper/results/confirm_1se.py   # fresh-draw check of the one-SE rule
 python paper/results/twins.py                  # statsmodels / glum / stock equivalence
 python paper/results/recompute.py              # means and SEs from the per-row log-odds
-python paper/results/make_numbers.py && python paper/results/make_extra.py   # every number in the paper
+python paper/results/make_numbers.py && python paper/results/make_extra.py   # every number in the note
 python paper/figures/make.py                   # the figures
 python examples/quickstart.py                  # one-minute synthetic demo
 ```
@@ -273,13 +273,14 @@ python examples/quickstart.py                  # one-minute synthetic demo
 ## Cite
 
 ```bibtex
-@misc{ouallaf2026anchorlogit,
+@techreport{ouallaf2026anchorlogit,
   author       = {Ouallaf, Moussa},
-  organization = {Husimi.ai},
+  institution  = {Husimi.ai},
+  type         = {Technical note},
   title        = {A per-sample offset for scikit-learn logistic regression},
   year         = {2026},
-  howpublished = {\url{https://github.com/tr4m0ryp/anchorlogit}},
-  note         = {Software: anchorlogit 0.1.0}
+  url          = {https://github.com/tr4m0ryp/anchorlogit},
+  note         = {Preprint, not peer-reviewed. Software: anchorlogit 0.1.0}
 }
 ```
 
